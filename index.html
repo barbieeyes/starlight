@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>별빛탐정단: 우주 원정</title>
+<meta name="description" content="중학교 3학년 '별과 우주' 탐사 게임 — 별, 성단, 성운, 은하를 관측하고 추리해 찾아라!">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=IBM+Plex+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand"><h1>별빛탐정단: 우주 원정</h1><span class="who" id="who"></span></div>
+    <div class="meters">
+      <div class="meter">관측 에너지 <div class="cells" id="cells"></div> <b id="en">0</b></div>
+      <div class="meter star" id="m-stars">별 <b id="stars">0</b></div>
+      <div class="meter" id="m-clusters">성단 <b id="clusters">0</b></div>
+      <div class="meter" id="m-nebulae">성운 <b id="nebulae">0</b></div>
+      <div class="meter" id="m-galaxies">은하 <b id="galaxies">0</b></div>
+    </div>
+  </header>
+
+  <nav class="route" id="route" aria-label="원정 경로"></nav>
+
+  <section class="main">
+    <div class="skybox">
+      <canvas id="sky" tabindex="0" aria-label="관측 하늘. 드래그로 이동, 휠이나 두 손가락으로 확대·축소, 천체를 눌러 망원경 고정"></canvas>
+      <div class="hud"><div class="mission" id="hud"></div></div>
+      <div class="skyhint">드래그로 이동 · 휠/두 손가락으로 확대 · 천체를 눌러 조준</div>
+      <div class="zoombar">
+        <span class="zl" id="zl">×1.0</span>
+        <button id="zout" aria-label="축소">−</button>
+        <button id="zin" aria-label="확대">+</button>
+        <button id="zreset" aria-label="처음 화면으로" style="font-size:15px">⟲</button>
+      </div>
+    </div>
+    <aside class="panel" id="panel" aria-live="polite"></aside>
+  </section>
+
+  <section class="lower">
+    <div class="book">
+      <h2>탐사 수첩 <span class="muted" style="font-family:var(--f-body);font-size:13px" id="booksec"></span></h2>
+      <div class="tbl"><table><thead id="thead"></thead><tbody id="tbody"></tbody></table></div>
+    </div>
+    <div class="crew">
+      <h2>탐사단 현황 <span class="live off" id="live">OFFLINE</span></h2>
+      <div id="crew"></div>
+      <ul class="feed" id="feed"></ul>
+    </div>
+  </section>
+  <p class="foot">등급 숫자가 작을수록 밝은 별 · 연주시차 = 6개월 위치 변화의 ½ · 거리(pc) = 1 ÷ 연주시차(″)</p>
+</div>
+
+<div class="ov" id="ov" hidden><div class="card" id="card"></div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="data.js"></script>
+<script src="sky.js"></script>
+<script src="net.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
