@@ -6,7 +6,10 @@ const W = 2000, H = 1200;
 let cv, ctx, dpr = 1, cw = 0, ch = 0;
 let cam = { x: W / 2, y: H / 2, z: 1 }, camT = null;
 let sector = 0, objs = [], bg = [], members = [], sprites = {}, band = null;
-let selected = null, observed = new Set(), hover = null, onPick = () => {}, onZoom = () => {};
+let selected = null, collected = new Set(), observed = new Set(), hover = null, onPick = () => {}, onZoom = () => {};
+const evs = new Map(), floats = [], radarMarks = { ids: [], until: 0 };
+const ships = new Map(); // 탐사단 우주선: id -> { nick, me, aim, x, y, ang, ph, col }
+const SHIPCOL = ['121,211,232', '255,122,168', '185,162,255', '111,220,155', '255,176,98', '160,200,255'];
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // ---------- utilities ----------
@@ -45,22 +48,36 @@ function objPos(o) { return [o.x - parallaxShift(o), o.y]; }
 function mlim() { return 6.4 + 4.6 * Math.log10(cam.z); }
 
 // ---------- star drawing ----------
+// 빛 번짐은 색마다 한 번만 그려 두고 복사해서 씀 (매 프레임 그라디언트 생성 X)
+const glowCache = new Map();
+function glowSprite(col) {
+  const key = col.join(','); let c = glowCache.get(key);
+  if (!c) { c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, rgba(col, 0.42)); gr.addColorStop(0.25, rgba(col, 0.12)); gr.addColorStop(1, rgba(col, 0)); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); glowCache.set(key, c); }
+  return c;
+}
+let lowQ = false; // 느린 기기에서 자동으로 켜짐
 function drawStar(x, y, m, col, ph, t, boost) {
   const lim = mlim();
   if (m > lim + 0.3) return;
   const f = Math.pow(10, -0.4 * (m - lim));
-  // 반짝임: 두 개의 사인파 곱 + 빠른 흔들림. 밝을수록, 낮게 깜빡이도록
+  let a = Math.min(1, 0.25 + f * 0.75) * Math.max(0.15, Math.min(1, (lim + 0.3 - m) / 0.8));
+  if (f < 1.2 && !boost) { // 어두운 별: 계산을 줄인 빠른 반짝임
+    if (lowQ && ph > 0.55) return;
+    const tw = reduce ? 1 : 1 + 0.38 * Math.sin(t * (1.7 + ph * 2.3) + ph * 9);
+    const r = 0.45 + 0.85 * Math.pow(f, 0.27);
+    ctx.globalAlpha = Math.max(0.1, Math.min(1, a * tw)); ctx.fillStyle = `rgb(${col[0]},${col[1]},${col[2]})`;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2); ctx.globalAlpha = 1; return;
+  }
+  // 반짝임: 두 개의 사인파 곱 + 빠른 흔들림
   const amp = reduce ? 0 : (f > 40 ? 0.28 : 0.38);
   const tw = 1 + amp * Math.sin(t * (1.7 + ph * 2.3) + ph * 9) * Math.sin(t * (3.1 + ph) + ph * 4) + (reduce ? 0 : 0.08 * Math.sin(t * 13 + ph * 20));
   let r = Math.min(9, 0.45 + 0.85 * Math.pow(f, 0.27)) * (boost || 1);
-  let a = Math.min(1, 0.25 + f * 0.75) * Math.max(0.15, Math.min(1, (lim + 0.3 - m) / 0.8));
   a *= Math.max(0.35, Math.min(1.25, tw));
   r *= 0.92 + 0.08 * tw;
-  if (f > 6) {
+  if (f > 6 && !(lowQ && f < 20)) {
     const g = r * (f > 60 ? 6 : 4);
-    const gr = ctx.createRadialGradient(x, y, 0, x, y, g);
-    gr.addColorStop(0, rgba(col, 0.42 * a)); gr.addColorStop(0.25, rgba(col, 0.12 * a)); gr.addColorStop(1, rgba(col, 0));
-    ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(x, y, g, 0, 6.2832); ctx.fill();
+    ctx.globalAlpha = Math.min(1, a); ctx.drawImage(glowSprite(col), x - g, y - g, g * 2, g * 2); ctx.globalAlpha = 1;
   }
   if (f > 120) { // 밝은 별: 회절 십자 빛줄기
     const L = r * 7 * (0.85 + 0.15 * tw);
@@ -185,8 +202,122 @@ function genSprites(sec) {
   }
 }
 
+// ---------- 이벤트 별 · 레이더 · 떠오르는 글자 ----------
+function drawEvents(t) {
+  const now = performance.now();
+  evs.forEach((e, id) => {
+    const age = (now - e.born) / 1000, left = e.life - age;
+    if (left <= 0) { evs.delete(id); return; }
+    const [x, y] = toScreen(e.x, e.y);
+    const pulse = reduce ? 1 : 1 + 0.18 * Math.sin(t * 6), R = 9 * pulse * (e.rar === 'legend' ? 1.4 : e.rar === 'epic' ? 1.2 : 1);
+    const fade = left < 3 ? (Math.floor(left * 4) % 2 ? 0.45 : 1) : 1;
+    ctx.save(); ctx.translate(x, y); ctx.globalAlpha = fade;
+    const gl = ctx.createRadialGradient(0, 0, 0, 0, 0, R * 4); gl.addColorStop(0, e.col + 'cc'); gl.addColorStop(1, e.col + '00');
+    ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(0, 0, R * 4, 0, 6.2832); ctx.fill();
+    if (e.rar === 'legend') { for (let i = 0; i < 6; i++) { ctx.strokeStyle = `hsla(${(t * 120 + i * 60) % 360},90%,70%,0.7)`; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, R * 2.2, i * 1.047 + t * 2, i * 1.047 + t * 2 + 0.7); ctx.stroke(); } }
+    ctx.rotate(reduce ? 0 : t * 1.4);
+    ctx.fillStyle = '#fff'; ctx.beginPath();
+    for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4, r = i % 2 ? R * 0.38 : R * 1.25; ctx[i ? 'lineTo' : 'moveTo'](Math.cos(a) * r, Math.sin(a) * r); }
+    ctx.closePath(); ctx.fill();
+    ctx.rotate(reduce ? 0 : -t * 1.4);
+    ctx.strokeStyle = e.col; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(0, 0, R * 1.9, -Math.PI / 2, -Math.PI / 2 + 6.2832 * (left / e.life)); ctx.stroke();
+    ctx.font = '700 11px "IBM Plex Sans KR", "Malgun Gothic", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillStyle = e.col;
+    ctx.fillText(e.nm + ' ★', 0, R * 2.2 + 4);
+    ctx.restore();
+  });
+}
+function drawRadar(t) {
+  if (performance.now() > radarMarks.until) return;
+  radarMarks.ids.forEach(id => { const o = objs.find(v => v.id === id); if (!o) return;
+    const [wx, wy] = o.kind === 'star' ? objPos(o) : [o.x, o.y], [x, y] = toScreen(wx, wy), r = 16 + 10 * ((t * 1.5) % 1);
+    ctx.strokeStyle = `rgba(111,220,155,${1 - (t * 1.5) % 1})`; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(x, y, r + (o.size ? o.size * scale() * 0.6 : 0), 0, 6.2832); ctx.stroke(); });
+}
+function drawFloats(dt) {
+  for (let i = floats.length - 1; i >= 0; i--) {
+    const f = floats[i]; f.age += dt; if (f.age > 1.8) { floats.splice(i, 1); continue; }
+    const [x, y] = toScreen(f.x, f.y);
+    ctx.globalAlpha = Math.min(1, 2 * (1.8 - f.age)); ctx.font = '700 16px "Black Han Sans", "Malgun Gothic", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(3,6,14,0.85)'; ctx.strokeText(f.text, x, y - 20 - f.age * 34); ctx.fillStyle = f.col; ctx.fillText(f.text, x, y - 20 - f.age * 34);
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ---------- 탐사단 우주선 ----------
+function shipTarget(sh, t) {
+  const o = sh.aim && objs.find(v => v.id === sh.aim);
+  if (o) {
+    const [ox, oy] = o.kind === 'star' ? objPos(o) : [o.x, o.y];
+    const R = (o.kind === 'star' ? 46 : o.size * 0.75) + sh.ph * 26, a = t * (0.35 + sh.ph * 0.3) + sh.ph * 6.283;
+    return [ox + Math.cos(a) * R, oy + Math.sin(a) * R * 0.75];
+  }
+  // 아직 조준하지 않은 탐사선: 출발 지점(왼쪽 아래) 근처를 천천히 순항
+  const a = t * 0.25 + sh.ph * 6.283;
+  return [760 + sh.ph * 560 + Math.cos(a) * 40, H - 170 - sh.ph * 110 + Math.sin(a * 2) * 22];
+}
+function drawShips(t, dt) {
+  const many = ships.size > 14;
+  ships.forEach(sh => {
+    const [tx, ty] = shipTarget(sh, t);
+    if (sh.x == null) { sh.x = tx - 200; sh.y = ty + 80; }
+    const k = Math.min(1, dt * 1.6), vx = (tx - sh.x) * k, vy = (ty - sh.y) * k;
+    sh.x += vx; sh.y += vy;
+    if (Math.abs(vx) + Math.abs(vy) > 0.05) sh.ang += (((Math.atan2(vy, vx) - sh.ang + Math.PI * 3) % (Math.PI * 2)) - Math.PI) * 0.18;
+    const [x, y] = toScreen(sh.x, sh.y);
+    if (x < -30 || y < -30 || x > cw + 30 || y > ch + 30) return;
+    const s = sh.me ? 13 : 10, col = sh.col;
+    ctx.save(); ctx.translate(x, y); ctx.rotate(sh.ang);
+    const fl = s * (1.1 + (reduce ? 0 : Math.random() * 0.7));
+    const gr = ctx.createLinearGradient(-s * 0.6, 0, -s * 0.6 - fl, 0);
+    gr.addColorStop(0, `rgba(${col},0.85)`); gr.addColorStop(1, `rgba(${col},0)`);
+    ctx.fillStyle = gr; ctx.beginPath(); ctx.moveTo(-s * 0.6, -s * 0.28); ctx.lineTo(-s * 0.6 - fl, 0); ctx.lineTo(-s * 0.6, s * 0.28); ctx.fill();
+    ctx.fillStyle = '#e8eef9'; ctx.beginPath(); ctx.moveTo(s, 0); ctx.lineTo(-s * 0.7, -s * 0.62); ctx.lineTo(-s * 0.35, 0); ctx.lineTo(-s * 0.7, s * 0.62); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = `rgb(${col})`; ctx.beginPath(); ctx.arc(s * 0.15, 0, s * 0.22, 0, 6.2832); ctx.fill();
+    ctx.restore();
+    if (sh.me) { ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, s + 4, 0, 6.2832); ctx.stroke(); }
+    if (sh.shield) { ctx.strokeStyle = 'rgba(121,211,232,0.7)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, s + 6, 0, 6.2832); ctx.stroke(); }
+    if (hover === 'ship:' + sh.key) { ctx.strokeStyle = 'rgba(243,195,90,0.9)'; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.arc(x, y, s + 9, 0, 6.2832); ctx.stroke(); ctx.setLineDash([]); }
+    if (sh.me || !many || cam.z >= 2) {
+      ctx.font = `${sh.me ? 700 : 500} 11px "IBM Plex Sans KR", "Malgun Gothic", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      ctx.fillStyle = sh.me ? '#ffffff' : `rgba(${col},0.95)`; ctx.fillText(sh.me && sh.nick !== '내 탐사선' ? sh.nick + ' (나)' : sh.nick, x, y - s - 3);
+    }
+  });
+}
+
+// ---------- 움직이지 않는 층: 시점이 바뀔 때만 다시 그림 ----------
+const layerA = { c: null, key: '' }, layerB = { c: null, key: '' };
+function blitLayer(L, draw) {
+  const key = [cam.x.toFixed(2), cam.y.toFixed(2), cam.z.toFixed(4), cw, ch, dpr, sector].join('|');
+  if (!L.c) L.c = document.createElement('canvas');
+  if (L.key !== key) {
+    if (L.c.width !== cv.width || L.c.height !== cv.height) { L.c.width = cv.width; L.c.height = cv.height; }
+    const g = L.c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, cw, ch); draw(g); L.key = key;
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(L.c, 0, 0); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+function drawLayerA(g) {
+  const sg = g.createLinearGradient(0, 0, 0, ch);
+  if (sector === 3) { sg.addColorStop(0, '#02030a'); sg.addColorStop(1, '#05040f'); } else { sg.addColorStop(0, '#040814'); sg.addColorStop(1, '#0a1024'); }
+  g.fillStyle = sg; g.fillRect(0, 0, cw, ch);
+  if (band) { const s = scale(), [x0, y0] = toScreen(0, 0); g.globalAlpha = 0.9; g.drawImage(band, x0, y0, W * s, H * s); g.globalAlpha = 1; }
+}
+function drawLayerB(g) {
+  const s = scale();
+  objs.forEach(o => {
+    const sp = sprites[o.id]; if (!sp) return;
+    const [x, y] = toScreen(o.x, o.y), R = o.size * s * (o.kind === 'globular' ? 1.1 : o.kind.match(/emission|reflection|dark/) ? 1.6 : 1.25);
+    if (x + R < 0 || y + R < 0 || x - R > cw || y - R > ch) return;
+    g.save(); g.translate(x, y);
+    if (o.rot) g.rotate(o.rot);
+    if (o.tilt) g.scale(1, o.tilt);
+    g.globalAlpha = o.kind === 'globular' ? Math.max(0.25, 1 - (cam.z - 1) * 0.12) : 1; // 확대하면 개별 별로 분해되어 보임
+    g.globalCompositeOperation = o.kind === 'dark' ? 'source-over' : 'lighter';
+    g.drawImage(sp, -R, -R, R * 2, R * 2);
+    g.restore();
+  });
+}
+
 // ---------- render ----------
-let t0 = performance.now();
+let t0 = performance.now(), lastNow = performance.now(); const perf = { n: 0, t: performance.now() };
 function frame(now) {
   requestAnimationFrame(frame);
   if (!ctx) return;
@@ -195,14 +326,12 @@ function frame(now) {
     if (Math.abs(camT.z - cam.z) < 0.002 && Math.abs(camT.x - cam.x) < 0.3 && Math.abs(camT.y - cam.y) < 0.3) { cam = { ...camT }; camT = null; }
     clampCam(cam); onZoom(cam.z);
   }
-  const t = (now - t0) / 1000, s = scale();
+  const t = (now - t0) / 1000, s = scale(), dt = Math.min(0.1, (now - lastNow) / 1000); lastNow = now;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const sky = ctx.createLinearGradient(0, 0, 0, ch);
-  if (sector === 3) { sky.addColorStop(0, '#02030a'); sky.addColorStop(1, '#05040f'); }
-  else { sky.addColorStop(0, '#040814'); sky.addColorStop(1, '#0a1024'); }
-  ctx.fillStyle = sky; ctx.fillRect(0, 0, cw, ch);
+  blitLayer(layerA, drawLayerA);
+  // 2초마다 프레임 속도를 재서 느리면 저사양 모드로 (다시 빨라지면 해제)
+  perf.n++; if (now - perf.t > 2000) { const fps = perf.n * 1000 / (now - perf.t); if (fps < 32) lowQ = true; else if (fps > 52) lowQ = false; perf.n = 0; perf.t = now; }
 
-  if (band) { const [x0, y0] = toScreen(0, 0); ctx.globalAlpha = 0.9; ctx.drawImage(band, x0, y0, W * s, H * s); ctx.globalAlpha = 1; }
 
   const pad = 40;
   const vis = (x, y) => x > -pad && y > -pad && x < cw + pad && y < ch + pad;
@@ -212,35 +341,23 @@ function frame(now) {
     if (b.gal) { ctx.save(); ctx.translate(x, y); ctx.rotate(b.rot); ctx.scale(1, b.e); const rr = b.s * Math.sqrt(cam.z); const gr = ctx.createRadialGradient(0, 0, 0, 0, 0, rr); gr.addColorStop(0, `rgba(255,235,210,${b.a})`); gr.addColorStop(1, 'rgba(255,235,210,0)'); ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(0, 0, rr, 0, 6.2832); ctx.fill(); ctx.restore(); continue; }
     drawStar(x, y, b.m, b.c, b.ph, t);
   }
-  // 확장 천체 스프라이트
-  objs.forEach(o => {
-    const sp = sprites[o.id]; if (!sp) return;
-    const [x, y] = toScreen(o.x, o.y), R = o.size * s * (o.kind === 'globular' ? 1.1 : o.kind.match(/emission|reflection|dark/) ? 1.6 : 1.25);
-    if (x + R < 0 || y + R < 0 || x - R > cw || y - R > ch) return;
-    ctx.save(); ctx.translate(x, y);
-    if (o.rot) ctx.rotate(o.rot);
-    if (o.tilt) ctx.scale(1, o.tilt);
-    let a = 1;
-    if (o.kind === 'globular') a = Math.max(0.25, 1 - (cam.z - 1) * 0.12); // 확대하면 개별 별로 분해되어 보임
-    ctx.globalAlpha = a;
-    ctx.globalCompositeOperation = o.kind === 'dark' ? 'source-over' : 'lighter';
-    ctx.drawImage(sp, -R, -R, R * 2, R * 2);
-    ctx.restore(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
-  });
+  blitLayer(layerB, drawLayerB);
   // 성단·성운 구성 별
   for (const b of members) { const [x, y] = toScreen(b.x, b.y); if (vis(x, y)) drawStar(x, y, b.m, b.c, b.ph, t); }
   // 별 구역 주요 별
   objs.forEach(o => {
-    if (o.kind !== 'star') return;
+    if (o.kind !== 'star' && o.kind !== 'field') return;
     const [wx, wy] = objPos(o), [x, y] = toScreen(wx, wy);
     if (!vis(x, y)) return;
-    drawStar(x, y, Math.min(o.m, mlim() - 0.6), o.col || (o.col = kelvin(o.T)), (o.x % 97) / 97, t, 1.15);
+    drawStar(x, y, Math.min(o.m, mlim() - 0.6), o.col || (o.col = kelvin(o.T)), (o.x % 97) / 97, t, o.kind === 'field' ? 1.05 : 1.15);
   });
   // 라벨·조준선
   ctx.textAlign = 'center'; ctx.textBaseline = 'top';
   objs.forEach(o => {
     const [wx, wy] = o.kind === 'star' ? objPos(o) : [o.x, o.y], [x, y] = toScreen(wx, wy);
     if (!vis(x, y)) return;
+    if (collected.has(o.id)) { ctx.strokeStyle = 'rgba(111,220,155,0.9)'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(x, y, 11, 0, 6.2832); ctx.stroke(); }
+    if (o.kind === 'field') { if (hover === o.id) { ctx.strokeStyle = 'rgba(121,211,232,0.6)'; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.arc(x, y, 14, 0, 6.2832); ctx.stroke(); ctx.setLineDash([]); } return; }
     const rad = o.kind === 'star' ? 14 : Math.max(18, o.size * s * 0.8);
     const sel = selected === o.id, hov = hover === o.id, seen = observed.has(o.id);
     if (sel || hov) {
@@ -254,15 +371,23 @@ function frame(now) {
     ctx.fillStyle = sel ? '#f3c35a' : seen ? '#e3e9f6' : 'rgba(170,184,214,0.8)';
     ctx.fillText(o.nm + (seen && !sel ? ' ✓' : ''), x, y + rad + 10);
   });
+  drawEvents(t);
+  drawRadar(t);
+  drawShips(t, dt);
+  drawFloats(dt);
 }
 
 // ---------- input ----------
 const ptrs = new Map(); let drag = null, pinch = null;
 function pickAt(sx, sy) {
   let best = null, bd = 1e9; const s = scale();
+  evs.forEach((e, id) => { const [x, y] = toScreen(e.x, e.y), d = Math.hypot(x - sx, y - sy); if (d < 30 && d < bd) { bd = d; best = 'ev:' + id; } });
+  if (best) return best;
+  ships.forEach((sh, id) => { if (sh.me || sh.x == null) return; const [x, y] = toScreen(sh.x, sh.y), d = Math.hypot(x - sx, y - sy); if (d < 20 && d < bd) { bd = d; best = 'ship:' + id; } });
+  if (best) return best;
   objs.forEach(o => {
     const [wx, wy] = o.kind === 'star' ? objPos(o) : [o.x, o.y], [x, y] = toScreen(wx, wy);
-    const lim = o.kind === 'star' ? 28 : Math.max(30, o.size * s * 0.9);
+    const lim = o.kind === 'star' ? 28 : o.kind === 'field' ? 18 : Math.max(30, o.size * s * 0.9);
     const d = Math.hypot(x - sx, y - sy); if (d < lim && d < bd) { bd = d; best = o.id; }
   });
   return best;
@@ -308,12 +433,26 @@ function resize() {
 
 return {
   init(canvas, opts) { cv = canvas; ctx = cv.getContext('2d'); onPick = opts.onPick; onZoom = opts.onZoom || onZoom; bind(); resize(); requestAnimationFrame(frame); },
-  setSector(sec) { sector = sec; objs = SQ.SECTORS[sec].objs; genBackground(sec); genMembers(sec); genSprites(sec); cam = clampCam({ x: W / 2, y: H / 2, z: 1 }); camT = null; selected = null; onZoom(1); },
+  setSector(sec) { sector = sec; objs = SQ.SECTORS[sec].objs; genBackground(sec); genMembers(sec); genSprites(sec); cam = clampCam({ x: W / 2, y: H / 2, z: 1 }); camT = null; selected = null; ships.forEach(sh => { sh.x = null; }); evs.clear(); layerA.key = layerB.key = ''; onZoom(1); },
   setSelected(id) { selected = id; },
   setObserved(set) { observed = set; },
+  setCollected(set) { collected = set; },
   zoom(f) { zoomAt(cw / 2, ch / 2, f); },
   reset() { camT = clampCam({ x: W / 2, y: H / 2, z: 1 }); },
   focus(id) { const o = objs.find(v => v.id === id); if (!o) return; const z = Math.max(cam.z, o.kind === 'star' ? 2.2 : 2.6); camT = clampCam({ x: o.x, y: o.y, z }); },
+  addEvent(e) { evs.set(e.id, { ...e, born: performance.now() }); },
+  takeEvent(id) { const e = evs.get(id); evs.delete(id); return e; },
+  floatText(x, y, text, col) { floats.push({ x, y, text, col: col || '#f3c35a', age: 0 }); if (floats.length > 12) floats.shift(); },
+  radar(ids, secs) { radarMarks.ids = ids; radarMarks.until = performance.now() + secs * 1000; },
+  setShips(list) {
+    const keep = new Set();
+    list.forEach((p, i) => {
+      keep.add(p.id);
+      const sh = ships.get(p.id) || { ang: 0, ph: ([...String(p.id)].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) % 9973, 7) % 100) / 100, col: SHIPCOL[i % SHIPCOL.length] };
+      sh.nick = p.nick; sh.me = !!p.me; sh.aim = p.aim; sh.shield = !!p.shield; sh.key = p.id; if (p.col) sh.col = p.col; ships.set(p.id, sh);
+    });
+    [...ships.keys()].forEach(id => { if (!keep.has(id)) ships.delete(id); });
+  },
   kelvin,
 };
 })();

@@ -3,9 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>별빛탐정단 현황판</title>
+<title>Starlight Battle 현황판</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Crect width=%2764%27 height=%2764%27 rx=%2714%27 fill=%27%23070d1c%27/%3E%3Ccircle cx=%2732%27 cy=%2732%27 r=%2720%27 fill=%27none%27 stroke=%27%2379d3e8%27 stroke-width=%273%27/%3E%3Cpath d=%27M32 6v12M32 46v12M6 32h12M46 32h12%27 stroke=%27%2379d3e8%27 stroke-width=%273%27/%3E%3Cpath d=%27M32 22l3 7 7 3-7 3-3 7-3-7-7-3 7-3z%27 fill=%27%23f3c35a%27/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=IBM+Plex+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=IBM+Plex+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@500;600&family=Orbitron:wght@700;900&display=swap">
 <link rel="stylesheet" href="style.css">
 <style>
 .bhead { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; justify-content: space-between; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; }
@@ -20,25 +21,33 @@
 .bmain { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 12px; align-items: start; }
 @media (max-width: 900px) { .bmain { grid-template-columns: 1fr; } }
 .race { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 6px; min-width: 0; }
-.lanehead, .lane { display: grid; grid-template-columns: 30px minmax(90px, 160px) minmax(0, 1fr) 150px 26px; gap: 10px; align-items: center; }
+.lanehead, .lane { display: grid; grid-template-columns: 30px minmax(90px, 160px) minmax(0, 1fr) 190px 26px; gap: 10px; align-items: center; }
 .lanehead { font-size: 12px; color: var(--muted); padding: 0 6px 4px; border-bottom: 1px solid var(--line); }
 .lane { padding: 6px; border-radius: 8px; transition: background .4s; }
 .lane.flash { background: #24345a; }
 .lane .pos { font-family: var(--f-mono); color: var(--muted); text-align: right; }
 .lane .nm { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.track { display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; }
+.track { display: grid; grid-template-columns: repeat(var(--n, 7), 1fr); gap: 3px; }
 .track i { height: 14px; border-radius: 3px; background: var(--panel-2); border: 1px solid var(--line); }
 .track i.s0 { background: #f3c35a; border-color: #f3c35a; } .track i.s1 { background: #79d3e8; border-color: #79d3e8; }
 .track i.s2 { background: #ff7aa8; border-color: #ff7aa8; } .track i.s3 { background: #b9a2ff; border-color: #b9a2ff; }
 .track i.cur { border-color: var(--text); box-shadow: 0 0 0 2px rgba(227,233,246,.25); }
 .lane .got { font-family: var(--f-mono); font-size: 13px; color: var(--muted); white-space: nowrap; }
-.lane .got b { color: var(--amber); }
+.lane .got b { color: var(--amber); } .lane .got .pp { font-size: 16px; } .lane .got { line-height: 1.35; }
 .lane .x { width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--line); background: none; color: var(--muted); font-size: 13px; padding: 0; }
 .lane .x:hover { color: var(--bad); border-color: var(--bad); }
 .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--muted); padding: 4px 6px 0; }
 .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; background: var(--c); }
 @media (max-width: 640px) { .lanehead, .lane { grid-template-columns: 24px minmax(0,1fr) 110px 24px; } .lanehead .tr, .lane .track { grid-column: 2 / -1; grid-row: 2; } }
 .side { display: grid; gap: 12px; }
+.teamboard { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 8px; }
+.tb { display: grid; grid-template-columns: 34px minmax(0,1fr) auto; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--tc); }
+.tb.lead { box-shadow: 0 0 0 1px var(--tc), 0 0 22px color-mix(in srgb, var(--tc) 35%, transparent); }
+.tb .tk { font-family: var(--f-display); font-size: 26px; color: var(--tc); text-align: center; }
+.tb .tt { display: grid; gap: 2px; min-width: 0; } .tb .tt b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .tb .tt span { font-size: 12px; color: var(--muted); }
+.tb .tbar { height: 5px; background: var(--panel-2); border-radius: 3px; overflow: hidden; } .tb .tbar i { display: block; height: 100%; background: var(--tc); }
+.tb .tpp { font-family: var(--f-mono); font-size: 22px; color: var(--amber); } .tb .tpp small { font-size: 12px; margin-left: 2px; }
+.lane .nm .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--tc); margin-right: 6px; box-shadow: 0 0 6px var(--tc); }
 .side .crew { padding: 12px 14px; }
 .side .feed { max-height: 460px; border-top: 0; margin: 0; padding: 0; font-size: 13.5px; gap: 6px; }
 .admin { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -56,13 +65,15 @@
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 const N = SQ.MISSIONS.length, SECT = SQ.MISSIONS.map(m => m.sector);
+const TIERS = [['브론즈', 0], ['실버', 1000], ['골드', 2000], ['플래티넘', 3000], ['다이아', 4000], ['마스터', 5000], ['챌린저', 6000]];
+const tierOf = p => { let i = 0; TIERS.forEach((t, k) => { if (p >= t[1]) i = k; }); return i; };
 const qs = new URLSearchParams(location.search);
 const adminKey = code => { try { return localStorage.getItem('sq-admin-' + code); } catch (e) { return null; } };
 const joinURL = code => location.origin + location.pathname.replace(/board\.html$/, '') + '?code=' + code;
 const app = $('app'), ov = $('ov'), card = $('card');
 
 function createView() {
-  app.innerHTML = `<div class="bhead"><h1>별빛탐정단 현황판</h1></div>`;
+  app.innerHTML = `<div class="bhead"><h1 class="logo"><span class="l1">SONGRYE</span><span class="l2">STARLIGHT BATTLE</span></h1></div>`;
   card.innerHTML = `<div class="eyebrow">선생님용</div><h2>탐사방 만들기</h2>
     <p>탐사방을 만들면 4자리 방 코드가 생겨요. 학생들은 게임 첫 화면에서 방 코드와 닉네임만 넣고 들어오고, 이 화면에서 모두의 진행 상황을 실시간으로 볼 수 있어요.</p>
     <div class="field"><label for="title">탐사방 이름</label><input id="title" maxlength="40" value="3학년 별과 우주 탐사"></div>
@@ -83,12 +94,13 @@ async function boardView(code) {
   const title = await SQNet.roomTitle(code);
   const admin = adminKey(code);
   app.innerHTML = `
-    <div class="bhead"><div><div class="eyebrow">별빛탐정단: 우주 원정 · 실시간 현황판</div><h1>${esc(title || '탐사방 ' + code)}</h1></div>
+    <div class="bhead"><div><div class="eyebrow">SONGRYE STARLIGHT BATTLE · 실시간 현황판</div><h1>${esc(title || '탐사방 ' + code)}</h1></div>
       <div class="joinbox"><div><div class="muted" style="font-size:12px">방 코드</div><div class="bigcode">${esc(code)}</div></div>
-      <div class="how">게임 주소에서 방 코드와 닉네임 입력<br><b id="url"></b></div></div></div>
+      <div class="how">게임 주소에서 방 코드 · 닉네임 · 팀 선택<br><b id="url"></b></div></div></div>
+    <div class="teamboard" id="teamboard"></div>
     <div class="stats" id="stats"></div>
     <div class="bmain">
-      <div class="race"><div class="lanehead"><span>#</span><span>탐정</span><span class="tr">원정 진행 (미션 12개)</span><span>별 · 성단·성운·은하</span><span></span></div>
+      <div class="race"><div class="lanehead"><span>#</span><span>탐정</span><span class="tr">원정 진행 (미션 ${N}개)</span><span>탐사 점수 · 티어</span><span></span></div>
         <div id="lanes"><p class="empty" style="padding:10px 6px">아직 탑승한 탐정이 없어요. 방 코드를 알려 주세요!</p></div>
         <div class="legend"><span style="--c:#f3c35a">태양 이웃</span><span style="--c:#79d3e8">성단 구역</span><span style="--c:#ff7aa8">성운 지대</span><span style="--c:#b9a2ff">외부 은하</span></div></div>
       <div class="side"><div class="crew"><h2>탐사 소식 <span class="live off" id="live">연결 중</span></h2><ul class="feed" id="feed"></ul></div>
@@ -97,22 +109,29 @@ async function boardView(code) {
   $('url').textContent = joinURL(code);
   if (!title) { $('lanes').innerHTML = '<p class="err" style="padding:10px 6px">이 방 코드를 찾을 수 없어요. 코드를 확인하거나 새 탐사방을 만들어 주세요.</p>'; return; }
   if (admin) $('reset').onclick = () => confirmBox('탐사방을 비울까요?', '모든 학생의 진행 기록과 소식이 지워져요. 방 코드는 그대로 쓸 수 있어요.', async () => { await SQNet.resetRoom(code, admin); });
-  SQNet.subscribe(code, ps => { players = ps; renderLanes(code, admin); }, ev => {
-    $('feed').innerHTML = ev.slice(-30).reverse().map(e => `<li class="${esc(e.kind)}"><b>${esc(e.nickname)}</b> <span>${esc(e.body)}</span></li>`).join('');
-  }, ok => { $('live').className = 'live' + (ok ? '' : ' off'); $('live').textContent = ok ? 'LIVE' : 'OFFLINE'; });
+  let feed = [];
+  window.__sub = SQNet.subscribe(code, null, {
+    players: ps => { players = ps; renderLanes(code, admin); },
+    events: ev => { feed = feed.concat(ev).slice(-40); $('feed').innerHTML = feed.slice().reverse().map(e => `<li class="${esc(e.kind)}"><b>${esc(e.nickname)}</b> <span>${esc(e.body)}</span></li>`).join(''); },
+    status: ok => { $('live').className = 'live' + (ok ? '' : ' off'); $('live').textContent = ok ? 'LIVE' : '재연결 중'; },
+  });
 }
 function renderLanes(code, admin) {
-  const list = [...players].sort((a, b) => b.mission - a.mission || b.stars - a.stars || new Date(a.updated_at) - new Date(b.updated_at));
+  const tot = p => Math.max(0, p.stars + (p.delta || 0));
+  const list = [...players].sort((a, b) => (b.points || 0) - (a.points || 0) || b.mission - a.mission || new Date(a.updated_at) - new Date(b.updated_at));
   const sum = k => list.reduce((a, p) => a + p[k], 0);
-  $('stats').innerHTML = [['탑승 탐정', list.length], ['원정 완료', list.filter(p => p.finished).length], ['모은 별', sum('stars')], ['성단', sum('clusters')], ['성운', sum('nebulae')], ['은하', sum('galaxies')], ['소행성 충돌', sum('hits')]]
+  $('stats').innerHTML = [['탑승 탐정', list.length], ['원정 완료', list.filter(p => p.finished).length], ['최고 점수', list.length ? (list[0].points || 0).toLocaleString() + 'P' : '-'], ['모은 별', list.reduce((a, p) => a + tot(p), 0)], ['성단', sum('clusters')], ['성운', sum('nebulae')], ['은하', sum('galaxies')], ['소행성 충돌', sum('hits')]]
     .map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+  const T = SQ.TEAMS.map((t, i) => ({ i, t, n: 0, p: 0, f: 0 })); list.forEach(p => { const x = T[p.team || 0]; x.n++; x.p += p.points || 0; if (p.finished) x.f++; });
+  const tl = T.filter(x => x.n).sort((a, b) => b.p - a.p), top = tl.length ? tl[0].p || 1 : 1;
+  $('teamboard').innerHTML = tl.length ? tl.map((x, k) => `<div class="tb ${k === 0 ? 'lead' : ''}" style="--tc:${x.t.col}"><div class="tk">${k + 1}</div><div class="tt"><b>${x.i + 1}팀 ${x.t.nm}</b><span>${x.n}명${x.f ? ` · 완주 ${x.f}` : ''}</span><div class="tbar"><i style="width:${x.p / top * 100}%"></i></div></div><div class="tpp">${x.p.toLocaleString()}<small>P</small></div></div>`).join('') : '';
   if (!list.length) { $('lanes').innerHTML = '<p class="empty" style="padding:10px 6px">아직 탑승한 탐정이 없어요. 방 코드를 알려 주세요!</p>'; return; }
   $('lanes').innerHTML = list.map((p, i) => {
     const flash = prevMission.has(p.id) && prevMission.get(p.id) !== p.mission;
     const cells = Array.from({ length: N }, (_, k) => `<i class="${k < p.mission ? 's' + SECT[k] : ''} ${k === p.mission && !p.finished ? 'cur' : ''}"></i>`).join('');
-    return `<div class="lane ${flash ? 'flash' : ''}"><span class="pos">${i + 1}</span><span class="nm">${esc(p.nickname)}${p.finished ? ' 🏁' : ''}</span>
+    return `<div class="lane ${flash ? 'flash' : ''}"><span class="pos">${i + 1}</span><span class="nm"><i class="dot" style="--tc:${SQ.TEAMS[p.team || 0].col}"></i>${esc(p.nickname)}${p.finished ? ' 🏁' : ''}</span>
       <div class="track" title="${p.mission}/${N}">${cells}</div>
-      <span class="got"><b>★${p.stars}</b> · ${p.clusters}·${p.nebulae}·${p.galaxies}${p.hits ? ` · ☄${p.hits}` : ''}</span>
+      <span class="got"><b class="pp">${(p.points || 0).toLocaleString()}P</b> <span class="tier t${tierOf(p.points || 0)}">${TIERS[tierOf(p.points || 0)][0]}</span><br>★${tot(p)} · ${p.clusters}·${p.nebulae}·${p.galaxies}${p.hits ? ` · ☄${p.hits}` : ''}</span>
       ${admin ? `<button class="x" data-id="${p.id}" aria-label="${esc(p.nickname)} 내보내기">×</button>` : '<span></span>'}</div>`;
   }).join('');
   prevMission = new Map(list.map(p => [p.id, p.mission]));

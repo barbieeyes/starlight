@@ -3,18 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>별빛탐정단: 우주 원정</title>
-<meta name="description" content="중학교 3학년 '별과 우주' 탐사 게임 — 별, 성단, 성운, 은하를 관측하고 추리해 찾아라!">
+<title>Songrye Starlight Battle</title>
+<meta name="description" content="송례 스타라이트 배틀 — 중학교 3학년 '별과 우주' 탐사 배틀 게임 — 별, 성단, 성운, 은하를 관측하고 추리해 찾아라!">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Crect width=%2764%27 height=%2764%27 rx=%2714%27 fill=%27%23070d1c%27/%3E%3Ccircle cx=%2732%27 cy=%2732%27 r=%2720%27 fill=%27none%27 stroke=%27%2379d3e8%27 stroke-width=%273%27/%3E%3Cpath d=%27M32 6v12M32 46v12M6 32h12M46 32h12%27 stroke=%27%2379d3e8%27 stroke-width=%273%27/%3E%3Cpath d=%27M32 22l3 7 7 3-7 3-3 7-3-7-7-3 7-3z%27 fill=%27%23f3c35a%27/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=IBM+Plex+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=IBM+Plex+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@500;600&family=Orbitron:wght@700;900&display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div class="wrap">
   <header class="top">
-    <div class="brand"><h1>별빛탐정단: 우주 원정</h1><span class="who" id="who"></span></div>
+    <div class="brand"><h1 class="logo"><span class="l1">SONGRYE</span><span class="l2">STARLIGHT BATTLE</span></h1><span class="who" id="who"></span></div>
     <div class="meters">
+      <button class="meter sound" id="snd" aria-pressed="false">♪ 음악 켜기</button>
       <div class="meter">관측 에너지 <div class="cells" id="cells"></div> <b id="en">0</b></div>
+      <div class="meter score" id="m-pts"><span class="tier" id="tierb">브론즈</span><b id="pts">0</b><span class="pu">P</span><span class="tbar"><i id="tierbar"></i></span></div>
+      <div class="meter boost" id="boostb" hidden></div>
       <div class="meter star" id="m-stars">별 <b id="stars">0</b></div>
       <div class="meter" id="m-clusters">성단 <b id="clusters">0</b></div>
       <div class="meter" id="m-nebulae">성운 <b id="nebulae">0</b></div>
@@ -28,7 +32,8 @@
     <div class="skybox">
       <canvas id="sky" tabindex="0" aria-label="관측 하늘. 드래그로 이동, 휠이나 두 손가락으로 확대·축소, 천체를 눌러 망원경 고정"></canvas>
       <div class="hud"><div class="mission" id="hud"></div></div>
-      <div class="skyhint">드래그로 이동 · 휠/두 손가락으로 확대 · 천체를 눌러 조준</div>
+      <div class="farcrew" id="farcrew" hidden></div>
+      <div class="items" id="items" aria-label="아이템 가방"></div>
       <div class="zoombar">
         <span class="zl" id="zl">×1.0</span>
         <button id="zout" aria-label="축소">−</button>
@@ -50,15 +55,18 @@
       <ul class="feed" id="feed"></ul>
     </div>
   </section>
-  <p class="foot">등급 숫자가 작을수록 밝은 별 · 연주시차 = 6개월 위치 변화의 ½ · 거리(pc) = 1 ÷ 연주시차(″)</p>
+  <p class="foot">등급 숫자가 작을수록 밝은 별 · 연주시차 = 1월↔7월 움직인 정도의 ½ · 거리(pc) = 1 ÷ 연주시차(″)</p>
 </div>
 
 <div class="ov" id="ov" hidden><div class="card" id="card"></div></div>
+<div class="ov ov2" id="ov2" hidden><div class="card" id="card2"></div></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="data.js"></script>
 <script src="sky.js"></script>
 <script src="net.js"></script>
+<script src="audio.js"></script>
 <script src="game.js"></script>
 </body>
 </html>
