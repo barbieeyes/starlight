@@ -56,12 +56,13 @@ function glowSprite(col) {
     gr.addColorStop(0, rgba(col, 0.42)); gr.addColorStop(0.25, rgba(col, 0.12)); gr.addColorStop(1, rgba(col, 0)); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); glowCache.set(key, c); }
   return c;
 }
-let lowQ = false; // 느린 기기에서 자동으로 켜짐
+let lowQ = false, fieldBright = true; // 느린 기기에서 자동으로 켜짐
 function drawStar(x, y, m, col, ph, t, boost) {
   const lim = mlim();
   if (m > lim + 0.3) return;
-  const f = Math.pow(10, -0.4 * (m - lim));
-  let a = Math.min(1, 0.25 + f * 0.75) * Math.max(0.15, Math.min(1, (lim + 0.3 - m) / 0.8));
+  // 확대하면 더 어두운 별까지 보이지만(lim), 별 크기는 거의 그대로 (sizeLim) → 배경별이 커 보이지 않게
+  const sizeLim = 6.4 + 1.1 * Math.log10(cam.z), f = Math.pow(10, -0.4 * (m - sizeLim));
+  let a = Math.min(1, 0.25 + Math.max(f, 0.35) * 0.75) * Math.max(0.15, Math.min(1, (lim + 0.3 - m) / 0.8));
   if (f < 1.2 && !boost) { // 어두운 별: 계산을 줄인 빠른 반짝임
     if (lowQ && ph > 0.55) return;
     const tw = reduce ? 1 : 1 + 0.38 * Math.sin(t * (1.7 + ph * 2.3) + ph * 9);
@@ -189,7 +190,7 @@ function genSprites(sec) {
   });
   // 은하수 띠
   if (sec < 3) {
-    band = makeCanvas(800); band.height = 480; const g = band.getContext('2d'), r = rng(sec + 5);
+    band = makeCanvas(1600); band.height = 960; const g = band.getContext('2d'), r = rng(sec + 5); g.scale(2, 2);
     g.globalCompositeOperation = 'lighter';
     for (let i = 0; i < 160; i++) { const x = r() * 800; blob(g, x, 480 * 0.55 + gauss(r) * 45 - (x - 400) * 0.18, 30 + r() * 70, r() < 0.7 ? '120,135,190' : '170,150,140', 0.035); }
     g.globalCompositeOperation = 'destination-out';
@@ -200,6 +201,28 @@ function genSprites(sec) {
     const r = rng(404);
     for (let i = 0; i < 140; i++) bg.push({ gal: true, x: r() * W, y: r() * H, s: 2 + r() * 5, rot: r() * 3, e: 0.3 + r() * 0.7, a: 0.15 + r() * 0.3 });
   }
+}
+
+// ---------- 화면 밖 이름 있는 천체 방향 표시 (확대했을 때 길을 잃지 않게) ----------
+let arrows = [];
+function drawArrows() {
+  arrows = [];
+  if (cam.z < 1.35) return;
+  const m = 26;
+  objs.forEach(o => {
+    if (o.kind === 'field') return;
+    const [wx, wy] = o.kind === 'star' ? objPos(o) : [o.x, o.y], [x, y] = toScreen(wx, wy);
+    if (x > 0 && y > 0 && x < cw && y < ch) return;
+    const cx = cw / 2, cy = ch / 2, dx = x - cx, dy = y - cy, k = Math.min((cw / 2 - m) / Math.abs(dx || 1e-6), (ch / 2 - m) / Math.abs(dy || 1e-6));
+    const ax = cx + dx * k, ay = cy + dy * k, ang = Math.atan2(dy, dx), sel = selected === o.id;
+    ctx.save(); ctx.translate(ax, ay); ctx.rotate(ang);
+    ctx.fillStyle = sel ? '#f3c35a' : 'rgba(121,211,232,0.85)'; ctx.beginPath(); ctx.moveTo(10, 0); ctx.lineTo(-6, -7); ctx.lineTo(-6, 7); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    ctx.font = '600 11px "IBM Plex Sans KR", "Malgun Gothic", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const tx = Math.min(cw - 40, Math.max(40, ax - Math.cos(ang) * 22)), ty = Math.min(ch - 12, Math.max(12, ay - Math.sin(ang) * 18));
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(5,10,23,0.85)'; ctx.strokeText(o.nm, tx, ty); ctx.fillStyle = sel ? '#f3c35a' : '#cfe3f6'; ctx.fillText(o.nm, tx, ty);
+    arrows.push({ id: o.id, x: ax, y: ay });
+  });
 }
 
 // ---------- 이벤트 별 · 레이더 · 떠오르는 글자 ----------
@@ -255,7 +278,7 @@ function shipTarget(sh, t) {
   return [760 + sh.ph * 560 + Math.cos(a) * 40, H - 170 - sh.ph * 110 + Math.sin(a * 2) * 22];
 }
 function drawShips(t, dt) {
-  const many = ships.size > 14;
+  const many = ships.size > 14, boxes = [];
   ships.forEach(sh => {
     const [tx, ty] = shipTarget(sh, t);
     if (sh.x == null) { sh.x = tx - 200; sh.y = ty + 80; }
@@ -263,6 +286,7 @@ function drawShips(t, dt) {
     sh.x += vx; sh.y += vy;
     if (Math.abs(vx) + Math.abs(vy) > 0.05) sh.ang += (((Math.atan2(vy, vx) - sh.ang + Math.PI * 3) % (Math.PI * 2)) - Math.PI) * 0.18;
     const [x, y] = toScreen(sh.x, sh.y);
+    sh.lx = null;
     if (x < -30 || y < -30 || x > cw + 30 || y > ch + 30) return;
     const s = sh.me ? 13 : 10, col = sh.col;
     ctx.save(); ctx.translate(x, y); ctx.rotate(sh.ang);
@@ -276,9 +300,20 @@ function drawShips(t, dt) {
     if (sh.me) { ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, s + 4, 0, 6.2832); ctx.stroke(); }
     if (sh.shield) { ctx.strokeStyle = 'rgba(121,211,232,0.7)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, s + 6, 0, 6.2832); ctx.stroke(); }
     if (hover === 'ship:' + sh.key) { ctx.strokeStyle = 'rgba(243,195,90,0.9)'; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.arc(x, y, s + 9, 0, 6.2832); ctx.stroke(); ctx.setLineDash([]); }
-    if (sh.me || !many || cam.z >= 2) {
-      ctx.font = `${sh.me ? 700 : 500} 11px "IBM Plex Sans KR", "Malgun Gothic", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-      ctx.fillStyle = sh.me ? '#ffffff' : `rgba(${col},0.95)`; ctx.fillText(sh.me && sh.nick !== '내 탐사선' ? sh.nick + ' (나)' : sh.nick, x, y - s - 3);
+    sh.lx = x; sh.ly = y - s - 3; sh.ls = s;
+  });
+  // 이름표: 내 이름은 항상, 친구 이름은 겹치지 않을 때만
+  const order = [...ships.values()].filter(sh => sh.lx != null).sort((a, b) => (b.me ? 1 : 0) - (a.me ? 1 : 0));
+  order.forEach(sh => {
+    const x = sh.lx, y = sh.ly, col = sh.col;
+    if (x < -30 || y < -30 || x > cw + 30 || y > ch + 30) return;
+    ctx.font = `${sh.me ? 700 : 500} ${sh.me ? 12 : many ? 10 : 11}px "IBM Plex Sans KR", "Malgun Gothic", sans-serif`;
+    const label = sh.me && sh.nick !== '내 탐사선' ? sh.nick + ' (나)' : sh.nick, w = ctx.measureText(label).width + 4, box = [x - w / 2, y - 13, x + w / 2, y];
+    if (!sh.me && boxes.some(b => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1])) return;
+    boxes.push(box);
+    {
+      ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(5,10,23,0.8)'; ctx.strokeText(label, x, y); ctx.fillStyle = sh.me ? '#ffffff' : `rgba(${col},0.95)`; ctx.fillText(label, x, y);
     }
   });
 }
@@ -298,7 +333,7 @@ function drawLayerA(g) {
   const sg = g.createLinearGradient(0, 0, 0, ch);
   if (sector === 3) { sg.addColorStop(0, '#02030a'); sg.addColorStop(1, '#05040f'); } else { sg.addColorStop(0, '#040814'); sg.addColorStop(1, '#0a1024'); }
   g.fillStyle = sg; g.fillRect(0, 0, cw, ch);
-  if (band) { const s = scale(), [x0, y0] = toScreen(0, 0); g.globalAlpha = 0.9; g.drawImage(band, x0, y0, W * s, H * s); g.globalAlpha = 1; }
+  if (band) { const s = scale(), [x0, y0] = toScreen(0, 0); g.globalAlpha = Math.max(0.15, 0.9 / Math.pow(cam.z, 0.85)); g.imageSmoothingQuality = 'high'; g.drawImage(band, x0, y0, W * s, H * s); g.globalAlpha = 1; }
 }
 function drawLayerB(g) {
   const s = scale();
@@ -349,7 +384,7 @@ function frame(now) {
     if (o.kind !== 'star' && o.kind !== 'field') return;
     const [wx, wy] = objPos(o), [x, y] = toScreen(wx, wy);
     if (!vis(x, y)) return;
-    drawStar(x, y, Math.min(o.m, mlim() - 0.6), o.col || (o.col = kelvin(o.T)), (o.x % 97) / 97, t, o.kind === 'field' ? 1.05 : 1.15);
+    drawStar(x, y, o.kind === 'field' && !fieldBright ? o.m + 1.6 : Math.min(o.m, mlim() - 0.6), o.col || (o.col = kelvin(o.T)), (o.x % 97) / 97, t, o.kind === 'field' ? (fieldBright ? 1.05 : 0) : 1.15);
   });
   // 라벨·조준선
   ctx.textAlign = 'center'; ctx.textBaseline = 'top';
@@ -373,14 +408,25 @@ function frame(now) {
   });
   drawEvents(t);
   drawRadar(t);
+  drawArrows();
   drawShips(t, dt);
   drawFloats(dt);
 }
+
+function focusObj(id) { const o = objs.find(v => v.id === id); if (!o) return; const z = Math.max(cam.z, o.kind === 'star' || o.kind === 'field' ? 2.2 : 2.6); camT = clampCam({ x: o.x, y: o.y, z: Math.min(6, z) }); }
+
+// ---------- 우주 커서: 토성(기본) · 조준경(누를 수 있는 것 위) · 혜성(끌기) ----------
+const CUR = (svg, x, y, fb) => `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${x} ${y}, ${fb}`;
+const C_PLANET = CUR('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><ellipse cx="16" cy="16" rx="14" ry="5" fill="none" stroke="#f3c35a" stroke-width="2" transform="rotate(-20 16 16)"/><circle cx="16" cy="16" r="7" fill="#e9b864" stroke="#1b1404" stroke-width="1"/><circle cx="16" cy="16" r="1.4" fill="#1b1404"/></svg>', 16, 16, 'crosshair');
+const C_AIM = CUR('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><circle cx="16" cy="16" r="10" fill="none" stroke="#79d3e8" stroke-width="2"/><path d="M16 1v8M16 23v8M1 16h8M23 16h8" stroke="#79d3e8" stroke-width="2"/><circle cx="16" cy="16" r="2" fill="#f3c35a"/></svg>', 16, 16, 'pointer');
+const C_COMET = CUR('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><defs><linearGradient id="g" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#79d3e8" stop-opacity="0"/><stop offset="1" stop-color="#79d3e8"/></linearGradient></defs><path d="M2 30 L20 12 L24 16 Z" fill="url(#g)"/><circle cx="23" cy="9" r="6" fill="#fff" stroke="#79d3e8" stroke-width="2"/></svg>', 23, 9, 'grabbing');
 
 // ---------- input ----------
 const ptrs = new Map(); let drag = null, pinch = null;
 function pickAt(sx, sy) {
   let best = null, bd = 1e9; const s = scale();
+  arrows.forEach(a => { const d = Math.hypot(a.x - sx, a.y - sy); if (d < 22 && d < bd) { bd = d; best = 'goto:' + a.id; } });
+  if (best) return best;
   evs.forEach((e, id) => { const [x, y] = toScreen(e.x, e.y), d = Math.hypot(x - sx, y - sy); if (d < 30 && d < bd) { bd = d; best = 'ev:' + id; } });
   if (best) return best;
   ships.forEach((sh, id) => { if (sh.me || sh.x == null) return; const [x, y] = toScreen(sh.x, sh.y), d = Math.hypot(x - sx, y - sy); if (d < 20 && d < bd) { bd = d; best = 'ship:' + id; } });
@@ -394,7 +440,7 @@ function pickAt(sx, sy) {
 }
 function zoomAt(sx, sy, factor) {
   const [wx, wy] = toWorld(sx, sy);
-  const z = Math.min(9, Math.max(1, (camT ? camT.z : cam.z) * factor));
+  const z = Math.min(6, Math.max(1, (camT ? camT.z : cam.z) * factor));
   cam.z = z; const s = scale();
   cam.x = wx - (sx - cw / 2) / s; cam.y = wy - (sy - ch / 2) / s; camT = null; clampCam(cam); onZoom(cam.z);
 }
@@ -403,17 +449,17 @@ function bind() {
     if (ptrs.size === 1) drag = { x: e.offsetX, y: e.offsetY, cx: cam.x, cy: cam.y, moved: false };
     if (ptrs.size === 2) { const p = [...ptrs.values()]; pinch = { d: Math.hypot(p[0][0] - p[1][0], p[0][1] - p[1][1]), z: cam.z }; drag = null; } });
   cv.addEventListener('pointermove', e => {
-    if (!ptrs.has(e.pointerId)) { hover = pickAt(e.offsetX, e.offsetY); cv.style.cursor = hover ? 'pointer' : 'grab'; return; }
+    if (!ptrs.has(e.pointerId)) { hover = pickAt(e.offsetX, e.offsetY); cv.style.cursor = hover ? C_AIM : C_PLANET; return; }
     ptrs.set(e.pointerId, [e.offsetX, e.offsetY]);
     if (pinch && ptrs.size === 2) { const p = [...ptrs.values()]; const d = Math.hypot(p[0][0] - p[1][0], p[0][1] - p[1][1]);
       const mx = (p[0][0] + p[1][0]) / 2, my = (p[0][1] + p[1][1]) / 2; zoomAt(mx, my, (pinch.z * d / pinch.d) / cam.z); return; }
     if (drag) { const dx = e.offsetX - drag.x, dy = e.offsetY - drag.y; if (Math.abs(dx) + Math.abs(dy) > 5) drag.moved = true;
-      if (drag.moved) { const s = scale(); cam.x = drag.cx - dx / s; cam.y = drag.cy - dy / s; camT = null; clampCam(cam); cv.style.cursor = 'grabbing'; } }
+      if (drag.moved) { const s = scale(); cam.x = drag.cx - dx / s; cam.y = drag.cy - dy / s; camT = null; clampCam(cam); cv.style.cursor = C_COMET; } }
   });
   const up = e => { const wasDrag = drag && drag.moved; ptrs.delete(e.pointerId);
     if (ptrs.size < 2) pinch = null;
-    if (drag && !wasDrag && ptrs.size === 0) { const id = pickAt(e.offsetX, e.offsetY); if (id) onPick(id); }
-    if (ptrs.size === 0) drag = null; cv.style.cursor = 'grab'; };
+    if (drag && !wasDrag && ptrs.size === 0) { const id = pickAt(e.offsetX, e.offsetY); if (id && id.startsWith('goto:')) focusObj(id.slice(5)); else if (id) onPick(id); }
+    if (ptrs.size === 0) drag = null; cv.style.cursor = C_PLANET; };
   cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', e => { ptrs.delete(e.pointerId); drag = null; pinch = null; });
   cv.addEventListener('wheel', e => { e.preventDefault(); zoomAt(e.offsetX, e.offsetY, Math.exp(-e.deltaY * 0.0015)); }, { passive: false });
   cv.addEventListener('dblclick', e => zoomAt(e.offsetX, e.offsetY, 1.8));
@@ -432,14 +478,15 @@ function resize() {
 }
 
 return {
-  init(canvas, opts) { cv = canvas; ctx = cv.getContext('2d'); onPick = opts.onPick; onZoom = opts.onZoom || onZoom; bind(); resize(); requestAnimationFrame(frame); },
+  init(canvas, opts) { cv = canvas; cv.style.cursor = C_PLANET; ctx = cv.getContext('2d'); onPick = opts.onPick; onZoom = opts.onZoom || onZoom; bind(); resize(); requestAnimationFrame(frame); },
   setSector(sec) { sector = sec; objs = SQ.SECTORS[sec].objs; genBackground(sec); genMembers(sec); genSprites(sec); cam = clampCam({ x: W / 2, y: H / 2, z: 1 }); camT = null; selected = null; ships.forEach(sh => { sh.x = null; }); evs.clear(); layerA.key = layerB.key = ''; onZoom(1); },
   setSelected(id) { selected = id; },
   setObserved(set) { observed = set; },
+  setFieldBright(v) { fieldBright = !!v; },
   setCollected(set) { collected = set; },
   zoom(f) { zoomAt(cw / 2, ch / 2, f); },
   reset() { camT = clampCam({ x: W / 2, y: H / 2, z: 1 }); },
-  focus(id) { const o = objs.find(v => v.id === id); if (!o) return; const z = Math.max(cam.z, o.kind === 'star' ? 2.2 : 2.6); camT = clampCam({ x: o.x, y: o.y, z }); },
+  focus(id) { focusObj(id); },
   addEvent(e) { evs.set(e.id, { ...e, born: performance.now() }); },
   takeEvent(id) { const e = evs.get(id); evs.delete(id); return e; },
   floatText(x, y, text, col) { floats.push({ x, y, text, col: col || '#f3c35a', age: 0 }); if (floats.length > 12) floats.shift(); },

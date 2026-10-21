@@ -16,13 +16,14 @@
     <div class="brand"><h1 class="logo"><span class="l1">SONGRYE</span><span class="l2">STARLIGHT BATTLE</span></h1><span class="who" id="who"></span></div>
     <div class="meters">
       <button class="meter sound" id="snd" aria-pressed="false">♪ 음악 켜기</button>
-      <div class="meter">관측 에너지 <div class="cells" id="cells"></div> <b id="en">0</b></div>
+      <button class="meter exitb" id="exit" title="처음 화면으로">⏏ 나가기</button>
+      <div class="meter energy" title="관측 에너지 · 10초마다 1씩 충전">⚡<div class="cells" id="cells"></div> <b id="en">0</b><span class="regen" id="regen"></span></div>
       <div class="meter score" id="m-pts"><span class="tier" id="tierb">브론즈</span><b id="pts">0</b><span class="pu">P</span><span class="tbar"><i id="tierbar"></i></span></div>
       <div class="meter boost" id="boostb" hidden></div>
-      <div class="meter star" id="m-stars">별 <b id="stars">0</b></div>
-      <div class="meter" id="m-clusters">성단 <b id="clusters">0</b></div>
-      <div class="meter" id="m-nebulae">성운 <b id="nebulae">0</b></div>
-      <div class="meter" id="m-galaxies">은하 <b id="galaxies">0</b></div>
+      <div class="meter star" id="m-stars" title="별"><svg class="mi" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 1.5l2.1 5.9 6.2.2-4.9 3.8 1.7 6-5.1-3.5-5.1 3.5 1.7-6L1.7 7.6l6.2-.2z" fill="#f3c35a"/></svg><b id="stars">0</b></div>
+      <div class="meter" id="m-clusters" title="성단"><svg class="mi" viewBox="0 0 20 20" aria-hidden="true"><g fill="#9cc7ff"><circle cx="10" cy="10" r="2.2"/><circle cx="5" cy="7" r="1.4"/><circle cx="14.5" cy="6" r="1.5"/><circle cx="6" cy="14" r="1.3"/><circle cx="14" cy="14.5" r="1.6"/><circle cx="10" cy="4" r="1"/><circle cx="17" cy="10.5" r="1"/><circle cx="3" cy="11" r=".9"/></g></svg><span class="ml">성단</span><b id="clusters">0</b></div>
+      <div class="meter" id="m-nebulae" title="성운"><svg class="mi" viewBox="0 0 20 20" aria-hidden="true"><defs><radialGradient id="nbg"><stop offset="0" stop-color="#ffb3c7"/><stop offset="1" stop-color="#ff5d8a" stop-opacity="0"/></radialGradient></defs><ellipse cx="9" cy="10" rx="8" ry="6" fill="url(#nbg)"/><ellipse cx="13" cy="8" rx="5" ry="4" fill="#8f7bff" opacity=".55"/><circle cx="10" cy="10" r="1.3" fill="#fff"/></svg><span class="ml">성운</span><b id="nebulae">0</b></div>
+      <div class="meter" id="m-galaxies" title="은하"><svg class="mi" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 10c0-2 2.5-3 4-1.5s.5 5-3 5.5-6-2.5-5.5-6S10 2 13.5 3.5" fill="none" stroke="#c7b8ff" stroke-width="1.6" stroke-linecap="round"/><circle cx="10" cy="10" r="1.8" fill="#fff3d6"/></svg><span class="ml">은하</span><b id="galaxies">0</b></div>
     </div>
   </header>
 

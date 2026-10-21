@@ -7,7 +7,7 @@ const KEY = 'sq2-state';
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 const fmt = n => (n < 0 ? '−' + Math.abs(n).toFixed(1) : n.toFixed(1));
-const fmtSh = n => (Math.round(n * 100) % 10 ? n.toFixed(2) : n.toFixed(1)) + '″';
+const fmtSh = n => String(+n.toFixed(3)) + '″';
 
 function fresh() { return { col:{}, last:null, started:false, mi:0, phase:'intro', en:MISSIONS[0].energy, sel:null, obs:{}, wrong:0, res:[], stars:0, clusters:0, nebulae:0, galaxies:0, hits:0, done:0, finished:false, net:null, msg:null, warpDone:[], memDone:[], lastAttack:0, bonus:0, items:[], boostUntil:0, streak:0 }; }
 let S = fresh();
@@ -34,25 +34,41 @@ function pick(id) {
   S.sel = id; S.msg = null; save(); SQAudio.sfx('pick'); SQNet.aim(S.net, M().sector, id); render(); }
 
 // ---------- actions ----------
+// 관측 에너지는 시간이 지나면 저절로 참 (10초에 1) → 에너지가 없어서 찍는 일이 없게
+const REGEN_S = 10, LOCK_S = 8;
+setInterval(() => {
+  if (!S.started || S.phase !== 'play' || S.finished) return;
+  const cap = M().energy, now = Date.now();
+  if (S.en >= cap) { S.regenAt = 0; paintRegen(); return; }
+  if (!S.regenAt) S.regenAt = now + REGEN_S * 1000;
+  if (now >= S.regenAt) { S.en++; S.regenAt = S.en < cap ? now + REGEN_S * 1000 : 0; save(); render(); }
+  paintRegen();
+  const lb = $('accuse'); if (lb) { const l = Math.ceil(((S.lockUntil || 0) - now) / 1000); lb.disabled = l > 0; lb.textContent = l > 0 ? `망원경 재정렬 중… ${l}초` : lb.dataset.label; }
+}, 1000);
+function paintRegen() { const el = $('regen'); if (!el) return; const l = S.regenAt ? Math.max(0, Math.ceil((S.regenAt - Date.now()) / 1000)) : 0; el.textContent = l ? `+1까지 ${l}초` : '가득'; }
+const REC = { '눈속임의 범인': ['abs'], '마지막 증인, 태양': ['spec', 'abs'], '공 모양의 별 무리': ['shape', 'count'], '스스로 빛나는 구름': ['nspec'], '우리은하를 닮은 은하': ['struct'], '매끈한 은하': ['struct', 'gshape'] };
+const bolts = n => '⚡'.repeat(n);
 function toolsFor() { return M().collect ? [] : M().sector === 0 ? M().tools : SEC().tools; }
 function measure(tid) {
   const o = objOf(S.sel), t = TOOLS[tid], key = t.key || tid;
   const ob = S.obs[o.id] || (S.obs[o.id] = {});
   if (ob[key]) return;
-  if (S.en < t.cost) { S.msg = { bad:true, t:'관측 에너지가 부족해요. 지금까지 모은 단서로 추리해 보세요!' }; render(); return; }
+  if (S.en < t.cost) { const w = Math.max(1, Math.ceil(((S.regenAt || Date.now()) - Date.now()) / 1000)); S.msg = { bad:true, t:`⚡ 에너지 충전 중이에요. 약 ${w + (t.cost - S.en - 1) * REGEN_S}초 뒤 측정할 수 있어요. 그동안 수첩의 값을 비교해 보세요!` }; render(); return; }
   S.en -= t.cost; ob[key] = true; S.msg = null; save(); SQAudio.sfx('measure'); render();
 }
 function accuse() {
   const m = M(), o = objOf(S.sel);
+  if (Date.now() < (S.lockUntil || 0)) return;
   if (S.sel === m.target) { S.phase = 'quiz'; save(); render(); showQuiz(); return; }
-  S.wrong++; S.en = Math.max(0, S.en - 1); SQAudio.sfx('wrong');
+  S.wrong++; S.lockUntil = Date.now() + LOCK_S * 1000; SQAudio.sfx('wrong');
   const tip = m.sector === 0 ? starWrong(S.mi, o, S.obs[o.id] || {}, fmt, fmtSh) : m.wrong;
-  S.msg = { bad:true, t:`${o.nm}은(는) 아니야! (에너지 −1) ${tip}` }; save(); render();
+  S.msg = { bad:true, t:`${o.nm}은(는) 아니야! 이 미션 별점 −1, ${LOCK_S}초 동안 망원경 재정렬. ${tip}` }; save(); render();
 }
 
 function collect(o) {
   const m = M(), list = S.col[S.mi] || (S.col[S.mi] = []);
   S.sel = o.id; SQNet.aim(S.net, m.sector, o.id);
+  if (Date.now() < (S.lockUntil || 0)) { toast('망원경이 흔들리는 중이에요. 잠깐만 기다려요!'); return; }
   if (list.includes(o.id)) { S.last = { id:o.id, ok:true, again:true }; save(); render(); return; }
   const ok = m.collect === 'hot' ? isHot(o) : isCool(o);
   if (ok) {
@@ -60,8 +76,7 @@ function collect(o) {
     if (S.streak >= 3) { const p = addPoints(20, null); Sky.floatText(o.x, o.y, `${S.streak}연속! +${p}P`, '#6fdc9b'); }
     if (list.length >= m.need) { S.phase = 'quiz'; save(); render(); showQuiz(); return; }
   } else {
-    S.wrong++; S.en = Math.max(0, S.en - 1); S.last = { id:o.id, ok:false }; SQAudio.sfx('wrong'); S.streak = 0;
-    if (S.en <= 0) { S.col[S.mi] = []; S.en = m.energy; S.last = { reset:true }; }
+    S.wrong++; S.last = { id:o.id, ok:false }; SQAudio.sfx('wrong'); S.streak = 0; S.lockUntil = Date.now() + 3000;
   }
   save(); render();
 }
@@ -73,6 +88,7 @@ function render() {
   const m = M(), sec = SEC();
   Sky.setSelected(S.sel);
   Sky.setCollected(new Set(m.collect ? (S.col[S.mi] || []) : []));
+  Sky.setFieldBright(!!m.collect && !S.finished);
   Sky.setObserved(new Set(Object.keys(S.obs).filter(id => sec.objs.some(o => o.id === id))));
   $('who').innerHTML = S.net ? `<span class="tdot" style="--tc:${TEAMS[S.net.team || 0].col}"></span>${(S.net.team || 0) + 1}팀 ${TEAMS[S.net.team || 0].nm} · <b>${esc(S.net.nickname)}</b> · 방 ${esc(S.net.code)}` : '혼자 탐사 중';
   $('en').textContent = S.en;
@@ -113,7 +129,7 @@ function renderPanel() {
     const word = m.collect === 'hot' ? '표면 온도가 높은 별' : '표면 온도가 낮은 별';
     let res = '<p class="empty">하늘의 별을 눌러 보세요. 맞으면 초록 동그라미가 생겨요.</p>';
     if (L && L.reset) res = '<div class="msg bad" role="status">에너지가 바닥났어요! 모은 별이 사라졌어요. 처음부터 다시 모아 보세요.</div>';
-    else if (lo) res = `<div class="ro"><div class="k">${L.again ? '이미 모은 별' : L.ok ? '수집 성공!' : '이 별은 아니에요 (에너지 −1)'}</div>
+    else if (lo) res = `<div class="ro"><div class="k">${L.again ? '이미 모은 별' : L.ok ? '수집 성공!' : '이 별은 아니에요 · 3초 동안 망원경 흔들림'}</div>
       <div class="v" style="color:${COLORS[lo.c]}">● ${lo.c} · 약 ${lo.T.toLocaleString()} K</div>
       <div class="note">${L.ok ? `${word}이 맞아요.` : `${word}이 아니에요. ${m.collect === 'hot' ? '더 파란 별을 찾아보세요.' : '더 붉은 별을 찾아보세요.'}`}</div></div>`;
     p.innerHTML = `<div class="eyebrow">별 수집 · ${esc(SEC().nm)}</div>
@@ -122,69 +138,93 @@ function renderPanel() {
       ${res}${hint}`;
     return;
   }
-  if (!S.sel) { p.innerHTML = `<div class="eyebrow">망원경 대기 중</div><p class="empty">하늘에서 천체를 눌러 망원경을 맞추세요. 확대하면 실제 모습과 색이 더 잘 보여요. 장비를 쓸 때마다 관측 에너지가 줄고, 한 번 잰 값은 수첩에 남아요.</p>${hint}`; return; }
+  if (!S.sel) { p.innerHTML = `<div class="eyebrow">망원경 대기 중</div><p class="empty">① 하늘에서 <b>이름이 있는 천체</b>를 눌러 망원경을 맞춰요.<br>② 관측 장비 버튼으로 측정해요 (⚡ 하나 = 에너지 1).<br>③ 정답이다 싶으면 <b>지목하기</b>!<br><span class="muted">확대했을 때 화면 가장자리의 ▶ 표시를 누르면 그 천체로 이동해요. 친구 우주선을 누르면 공격·대결·도움을 할 수 있어요.</span></p>${hint}`; return; }
   const o = objOf(S.sel), ob = S.obs[o.id] || {};
   const list = (m.sector === 0 ? ['mag', 'spec', 'plx', 'abs'] : SEC().tools).map(tid => {
     const t = TOOLS[tid], key = t.key || tid, on = toolsFor().includes(tid), done = !!ob[key];
-    const sub = !on ? (tid === 'abs' ? 'MISSION 02부터' : '고장') : done ? '측정 완료' : `에너지 ${t.cost}`;
-    return `<button class="tool ${done ? 'done' : ''}" data-t="${tid}" ${!on || done ? 'disabled' : ''}><span class="t">${t.name}</span><span class="c">${t.what} · ${sub}</span></button>`;
+    const rec = on && !done && (REC[m.title] || []).includes(tid);
+    const cost = !on ? `<span class="tc off">${tid === 'abs' ? 'MISSION 02부터' : '사용 불가'}</span>` : done ? '<span class="tc ok">✓ 측정 완료</span>' : `<span class="tc" aria-label="에너지 ${t.cost}">${bolts(t.cost)}</span>`;
+    return `<button class="tool ${done ? 'done' : ''} ${rec ? 'rec' : ''}" data-t="${tid}" ${!on || done ? 'disabled' : ''}>${rec ? '<span class="recb">추천</span>' : ''}<span class="t"><span class="ric">${TOOL_IC[tid] || ''}</span>${t.name}</span><span class="c">${t.what}</span>${cost}</button>`;
   }).join('');
   const dot = o.kind === 'star' ? (ob.spec ? COLORS[o.c] : '#c9d2e6') : '#c9d2e6';
   p.innerHTML = `<div class="eyebrow">망원경 고정 · ${esc(SEC().nm)}</div>
     <h3><span class="dot" style="color:${dot}"></span>${esc(o.nm)}</h3>
     <div class="row"><button class="linkbtn" id="zoomto">이 천체로 확대해서 보기</button></div>
+    <div class="eyebrow" style="color:var(--muted)">관측 장비 · 눌러서 측정 (⚡ = 쓰는 에너지)</div>
     <div class="tools">${list}</div>
     <div class="readouts">${o.kind === 'star' ? starReadouts(o, ob) : textReadouts(o, ob)}</div>
     ${S.msg ? `<div class="msg ${S.msg.bad ? 'bad' : ''}" role="status">${esc(S.msg.t)}</div>` : ''}
-    <button class="accuse" id="accuse">이 천체가 맞다! ${esc(o.nm)} 지목하기</button>${hint}`;
+    <button class="accuse" id="accuse" data-label="이 천체가 맞다! ${esc(o.nm)} 지목하기" ${Date.now() < (S.lockUntil || 0) ? 'disabled' : ''}>${Date.now() < (S.lockUntil || 0) ? '망원경 재정렬 중…' : `이 천체가 맞다! ${esc(o.nm)} 지목하기`}</button>${hint}`;
   p.querySelectorAll('.tool').forEach(b => b.onclick = () => measure(b.dataset.t));
   $('accuse').onclick = accuse; $('zoomto').onclick = () => Sky.focus(o.id);
 }
 
+const TOOL_IC = { mag:'🔆', spec:'🌈', plx:'📸', abs:'🎯', shape:'🔭', count:'🔢', color:'🎨', loc:'🗺', photo:'📷', nspec:'🌈', back:'🌌', gshape:'🔭', struct:'🧩', dist:'📏' };
 function textReadouts(o, ob) {
   const sec = SEC(); let h = '';
-  sec.tools.forEach(tid => { const t = TOOLS[tid], key = t.key || tid; if (ob[key]) h += `<div class="ro"><div class="k">${t.name} · ${t.what}</div><div class="vt">${esc(o.info[key])}</div></div>`; });
-  return h || '<p class="empty">장비를 골라 측정해 보세요.</p>';
+  sec.tools.forEach(tid => { const t = TOOLS[tid], key = t.key || tid; if (ob[key]) h += `<div class="ro"><div class="k"><span class="ric">${TOOL_IC[tid] || ''}</span>${t.name} · ${t.what}</div><div class="vt">${esc(o.info[key])}</div></div>`; });
+  return h || '<p class="empty">↑ 위의 관측 장비 버튼을 눌러 이 천체를 측정해 보세요. <b style="color:var(--amber)">추천</b> 표시가 있는 장비부터 써 보면 좋아요.</p>';
 }
+// 측정 결과: 계기판처럼 크게 (SVG 1단위 ≈ 1px, 글자 13~16px)
 function starReadouts(s, o) {
-  let h = ''; const col = COLORS[s.c];
+  let h = ''; const col = COLORS[s.c], T = 'font-family="IBM Plex Sans KR, Malgun Gothic, sans-serif"';
   if (o.mag) {
-    const x = 20 + ((s.m + 2) / 10) * 260;
-    h += `<div class="ro"><div class="k">광도계 · 겉보기 등급</div><div class="v">${fmt(s.m)} 등급</div>
-      <svg viewBox="0 0 300 34" aria-hidden="true"><defs><linearGradient id="mg" x1="0" x2="1"><stop offset="0" stop-color="#fff6d8"/><stop offset="1" stop-color="#1b2645"/></linearGradient></defs>
-      <rect x="20" y="8" width="260" height="8" rx="4" fill="url(#mg)"/>
-      ${[-2,0,2,4,6,8].map(v => `<text x="${20 + (v + 2) / 10 * 260}" y="31" font-size="9" fill="#8d9bbb" text-anchor="middle">${v < 0 ? '−' + (-v) : v}</text>`).join('')}
-      <line x1="${x}" y1="3" x2="${x}" y2="19" stroke="#f3c35a" stroke-width="2.5"/></svg>
-      <div class="note">왼쪽(숫자 작음)일수록 지구에서 밝게 보여요.</div></div>`;
+    const X = v => 24 + (v + 2) / 10 * 332, x = X(s.m);
+    h += `<div class="ro big"><div class="k"><span class="ric">🔆</span>광도계 · 겉보기 등급 (지구에서 보이는 밝기)</div>
+      <div class="v">${fmt(s.m)}<small>등급</small></div>
+      <svg viewBox="0 0 380 92" role="img" aria-label="겉보기 등급 ${fmt(s.m)}">
+        <defs><linearGradient id="mg" x1="0" x2="1"><stop offset="0" stop-color="#fff6d8"/><stop offset=".55" stop-color="#7c86a8"/><stop offset="1" stop-color="#1b2645"/></linearGradient></defs>
+        <rect x="24" y="30" width="332" height="16" rx="8" fill="url(#mg)"/>
+        ${[-2,0,2,4,6,8].map(v => `<line x1="${X(v)}" y1="46" x2="${X(v)}" y2="54" stroke="#8d9bbb"/><text x="${X(v)}" y="70" font-size="14" fill="#c9d2e6" text-anchor="middle" ${T}>${v < 0 ? '−' + (-v) : v}</text>`).join('')}
+        <text x="24" y="88" font-size="13" fill="#f3c35a" ${T}>← 밝게 보임</text><text x="356" y="88" font-size="13" fill="#8d9bbb" text-anchor="end" ${T}>어둡게 보임 →</text>
+        <path d="M${x - 9} 8 h18 l-9 14 z" fill="#f3c35a"/><line x1="${x}" y1="20" x2="${x}" y2="50" stroke="#f3c35a" stroke-width="3"/>
+      </svg></div>`;
   }
   if (o.spec) {
-    const peak = 2.898e6 / s.T, px = 20 + Math.min(1, Math.max(0, (peak - 380) / 370)) * 260;
-    h += `<div class="ro"><div class="k">분광기 · 색과 표면 온도</div><div class="v" style="color:${col}">${s.c} · 약 ${s.T.toLocaleString()} K</div>
-      <svg viewBox="0 0 300 30" aria-hidden="true"><defs><linearGradient id="sp" x1="0" x2="1"><stop offset="0" stop-color="#7a4dff"/><stop offset=".2" stop-color="#3d7bff"/><stop offset=".4" stop-color="#3fd28a"/><stop offset=".6" stop-color="#f4e04d"/><stop offset=".8" stop-color="#ff9a3c"/><stop offset="1" stop-color="#e2342b"/></linearGradient></defs>
-      <rect x="20" y="6" width="260" height="12" rx="3" fill="url(#sp)"/><line x1="${px}" y1="2" x2="${px}" y2="22" stroke="#fff" stroke-width="2.5"/>
-      <text x="20" y="29" font-size="8.5" fill="#8d9bbb">뜨거움</text><text x="280" y="29" font-size="8.5" fill="#8d9bbb" text-anchor="end">차가움</text></svg>
-      <div class="note">흰 선은 가장 세게 내는 빛의 위치예요. 왼쪽(파랑)일수록 표면 온도가 높아요.</div></div>`;
+    const cls = [['청색', 30000], ['청백색', 15000], ['백색', 9500], ['황백색', 6800], ['황색', 5800], ['주황색', 4500], ['적색', 3000]];
+    const idx = cls.findIndex(c => c[0] === s.c), CX = i => 30 + i * 53;
+    h += `<div class="ro big"><div class="k"><span class="ric">🌈</span>분광기 · 색과 표면 온도</div>
+      <div class="v" style="color:${col}"><span class="swatch" style="background:${col};box-shadow:0 0 18px ${col}"></span>${s.c}<small>약 ${s.T.toLocaleString()} K</small></div>
+      <svg viewBox="0 0 380 96" role="img" aria-label="${s.c}, 표면 온도 약 ${s.T} K">
+        <text x="8" y="16" font-size="13" fill="#ff9a8a" ${T}>뜨거움</text><text x="372" y="16" font-size="13" fill="#8fb4ff" text-anchor="end" ${T}>차가움</text>
+        <line x1="30" y1="42" x2="348" y2="42" stroke="#26375c" stroke-width="2"/>
+        ${cls.map((c, i) => `<circle cx="${CX(i)}" cy="42" r="${i === idx ? 15 : 10}" fill="${COLORS[c[0]]}" ${i === idx ? `stroke="#fff" stroke-width="3"` : 'opacity=".85"'}/>
+          <text x="${CX(i)}" y="76" font-size="${i === idx ? 14 : 12}" fill="${i === idx ? '#fff' : '#8d9bbb'}" font-weight="${i === idx ? 700 : 400}" text-anchor="middle" ${T}>${c[0]}</text>`).join('')}
+        <text x="8" y="16" font-size="0">.</text>
+      </svg>
+      <div class="note">왼쪽(파란색)으로 갈수록 표면 온도가 높아요. 하얀 테두리가 이 별이에요.</div></div>`;
   }
   if (o.plx) {
-    const amp = Math.min(34, 6 + s.sh * 28);
-    h += `<div class="ro"><div class="k">시차 관측 · 1월과 7월 사진 비교</div><div class="v">최대 위치 변화 ${fmtSh(s.sh)}</div>
-      <svg viewBox="0 0 300 70" aria-hidden="true"><rect width="300" height="70" rx="6" fill="#050a17"/>
-      <circle cx="40" cy="18" r="1.6" fill="#9fb0d6"/><circle cx="250" cy="50" r="1.6" fill="#9fb0d6"/><circle cx="200" cy="14" r="1.4" fill="#9fb0d6"/><circle cx="90" cy="56" r="1.3" fill="#9fb0d6"/>
-      <circle cx="${150 - amp}" cy="36" r="5" fill="${col}" opacity=".35"/><circle cx="${150 + amp}" cy="36" r="5" fill="${col}">
-      <animate attributeName="cx" values="${150 - amp};${150 + amp};${150 - amp}" dur="2.4s" repeatCount="indefinite"/></circle>
-      <text x="${150 - amp}" y="62" font-size="9" fill="#8d9bbb" text-anchor="middle">1월</text><text x="${150 + amp}" y="62" font-size="9" fill="#8d9bbb" text-anchor="middle">7월</text></svg>
-      <div class="note">연주시차는 이 값의 ½이에요. 직접 계산해서 거리를 구해 보세요.</div></div>`;
+    const amp = Math.min(95, 28 + s.sh * 70);
+    h += `<div class="ro big"><div class="k"><span class="ric">📸</span>시차 관측 · 1월과 7월 사진 겹쳐 보기</div>
+      <div class="v">${fmtSh(s.sh)}<small>움직임 → 연주시차는 ${fmtSh(s.sh / 2)}</small></div>
+      <svg viewBox="0 0 380 120" role="img" aria-label="1월과 7월 사이 ${fmtSh(s.sh)} 움직임">
+        <rect width="380" height="120" rx="8" fill="#050a17"/>
+        <g fill="#9fb0d6"><circle cx="40" cy="24" r="2"/><circle cx="330" cy="96" r="2"/><circle cx="280" cy="20" r="1.6"/><circle cx="90" cy="98" r="1.6"/><circle cx="352" cy="40" r="1.4"/></g>
+        <circle cx="${190 - amp}" cy="58" r="9" fill="${col}" opacity=".4"/><text x="${190 - amp}" y="88" font-size="14" fill="#79d3e8" text-anchor="middle" ${T}>1월</text>
+        <circle cx="${190 + amp}" cy="58" r="9" fill="${col}"><animate attributeName="cx" values="${190 - amp};${190 + amp};${190 - amp}" dur="2.4s" repeatCount="indefinite"/></circle>
+        <text x="${190 + amp}" y="88" font-size="14" fill="#ff7aa8" text-anchor="middle" ${T}>7월</text>
+        <path d="M${190 - amp + 12} 40 H${190 + amp - 12}" stroke="#f3c35a" stroke-width="2" marker-end="url(#ar)" marker-start="url(#ar2)"/>
+        <defs><marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="#f3c35a"/></marker><marker id="ar2" markerWidth="8" markerHeight="8" refX="2" refY="4" orient="auto"><path d="M8 0 L0 4 L8 8 z" fill="#f3c35a"/></marker></defs>
+        <text x="190" y="32" font-size="14" fill="#f3c35a" text-anchor="middle" font-weight="700" ${T}>${fmtSh(s.sh)}</text>
+      </svg>
+      <div class="note">많이 움직일수록 가까운 별이에요. 거리(pc) = 1 ÷ 연주시차(″)</div></div>`;
   }
   if (o.abs) {
-    const rr = m => Math.max(1.8, (7.6 - m) * 1.15 + 1.2);
-    h += `<div class="ro"><div class="k">10pc 시뮬레이터 · 10 pc로 옮겼을 때</div><div class="v">절대 등급 ${fmt(s.M)}</div>
-      <svg viewBox="0 0 300 60" aria-hidden="true"><rect width="300" height="60" rx="6" fill="#050a17"/>
-      <circle cx="70" cy="28" r="${rr(s.m) * 1.4}" fill="${col}" opacity=".9"/><text x="70" y="55" font-size="9" fill="#8d9bbb" text-anchor="middle">지금 보이는 밝기</text>
-      <path d="M118 28 h60" stroke="#79d3e8" stroke-width="1.5" stroke-dasharray="4 3"/><path d="M178 24 l7 4 l-7 4 z" fill="#79d3e8"/>
-      <circle cx="230" cy="28" r="${rr(s.M) * 1.4}" fill="${col}"/><text x="230" y="55" font-size="9" fill="#8d9bbb" text-anchor="middle">10 pc에 놓으면</text></svg>
-      <div class="note">${s.M < s.m ? '10 pc로 가져오면 더 밝아져요 → 10 pc보다 멀리 있어요.' : s.M > s.m ? '10 pc로 보내면 더 어두워져요 → 10 pc보다 가까이 있어요.' : '밝기가 변하지 않아요 → 이미 10 pc에 있어요.'}</div></div>`;
+    const rr = m => Math.max(4, (7.6 - m) * 2.4 + 3), dir = s.M < s.m ? 'far' : s.M > s.m ? 'near' : 'same';
+    h += `<div class="ro big"><div class="k"><span class="ric">🎯</span>10pc 시뮬레이터 · 모든 별을 10 pc에 놓고 비교</div>
+      <div class="v">${fmt(s.M)}<small>절대 등급 (실제 밝기)</small></div>
+      <svg viewBox="0 0 380 120" role="img" aria-label="겉보기 ${fmt(s.m)}등급에서 절대 ${fmt(s.M)}등급">
+        <rect width="380" height="120" rx="8" fill="#050a17"/>
+        <circle cx="80" cy="52" r="${rr(s.m) * 2.6}" fill="${col}" opacity=".18"/><circle cx="80" cy="52" r="${rr(s.m)}" fill="${col}"/>
+        <text x="80" y="102" font-size="14" fill="#c9d2e6" text-anchor="middle" ${T}>지금 보이는 밝기</text><text x="80" y="117" font-size="13" fill="#8d9bbb" text-anchor="middle" ${T}>${fmt(s.m)}등급</text>
+        <path d="M150 52 H226" stroke="#79d3e8" stroke-width="2.5" stroke-dasharray="6 5"/><path d="M226 45 l12 7 l-12 7 z" fill="#79d3e8"/>
+        <circle cx="300" cy="52" r="${rr(s.M) * 2.6}" fill="${col}" opacity=".22"/><circle cx="300" cy="52" r="${rr(s.M)}" fill="${col}"/>
+        <text x="300" y="102" font-size="14" fill="#fff" text-anchor="middle" font-weight="700" ${T}>10 pc에 놓으면</text><text x="300" y="117" font-size="13" fill="#f3c35a" text-anchor="middle" ${T}>${fmt(s.M)}등급</text>
+      </svg>
+      <div class="note big">${dir === 'far' ? '10 pc로 가져오니 <b>더 밝아져요</b> → 이 별은 10 pc보다 <b>멀리</b> 있어요.' : dir === 'near' ? '10 pc로 보내니 <b>더 어두워져요</b> → 이 별은 10 pc보다 <b>가까이</b> 있어요.' : '밝기가 <b>그대로</b>예요 → 이 별은 이미 <b>10 pc</b>에 있어요.'}</div></div>`;
   }
-  return h || '<p class="empty">장비를 골라 측정해 보세요.</p>';
+  return h || '<p class="empty">↑ 위의 관측 장비 버튼을 눌러 이 천체를 측정해 보세요. <b style="color:var(--amber)">추천</b> 표시가 있는 장비부터 써 보면 좋아요.</p>';
 }
 
 function cellFor(o, key) {
@@ -225,13 +265,13 @@ function showJoin() {
     <p>어느 밤, 우주 관측소의 지도에서 별과 성단, 성운, 은하가 하나둘 사라졌다. 별빛탐정단은 태양 이웃에서 출발해 점점 먼 우주로 나아가며 사라진 천체를 찾아야 한다. 이벤트 별을 낚아채고, 친구 탐사선과 배틀하며 탐사 점수 1위에 도전하라!</p>
     <div class="row" style="align-items:flex-end">
       <div class="field"><label for="jcode">방 코드 (4자리)</label><input class="code" id="jcode" inputmode="numeric" maxlength="4" autocomplete="off" value="${preset}"></div>
-      <div class="field" style="flex:1;min-width:160px"><label for="jnick">닉네임 (12자까지)</label><input id="jnick" maxlength="12" autocomplete="off" placeholder="예: 별사냥꾼"></div>
+      <div class="field" style="flex:1;min-width:160px"><label for="jnick">내 이름 · 우주선 위에 표시돼요 (12자까지)</label><input id="jnick" maxlength="12" autocomplete="off" placeholder="예: 3반 이정연"></div>
     </div>
     <div class="field"><label>팀 선택 · 같은 팀끼리는 공격할 수 없고, 팀 점수가 합산돼요</label>
       <div class="teams" role="radiogroup">${TEAMS.map((t, i) => `<button type="button" class="teamb" role="radio" aria-checked="false" data-t="${i}" style="--tc:${t.col}"><i></i><b>${i + 1}팀</b><span>${t.nm}</span></button>`).join('')}</div></div>
     <div class="err" id="jerr" role="alert"></div>
     <div class="row"><button class="go" id="jgo">탐사선 탑승</button><button class="ghost" id="jsolo">혼자 탐사하기</button></div>
-    <p class="muted" style="font-size:13px">선생님이신가요? <a href="board.html?new=1" style="color:var(--cyan)">탐사방 만들기 · 현황판</a></p>`);
+    <p class="muted" style="font-size:13px">선생님이신가요? <a href="board.html" style="color:var(--cyan)">선생님 현황판 (비밀번호 필요)</a></p>`);
   if (preset) $('jnick').focus();
   let team = -1;
   card.querySelectorAll('.teamb').forEach(b => b.onclick = () => { team = +b.dataset.t; $('jerr').textContent = ''; card.querySelectorAll('.teamb').forEach(x => x.setAttribute('aria-checked', x === b ? 'true' : 'false')); SQAudio.sfx('pick'); });
@@ -268,7 +308,7 @@ function showIntro() {
     ${first ? `<p class="muted">${esc(sec.story)}</p><div class="eyebrow" style="color:var(--amber)">MISSION ${m.code} · ${esc(m.title)}</div>` : ''}
     <div class="chief">${avatar}<div><div class="who">관측소장</div><p>${esc(m.intro)}</p></div></div>
     ${m.diagram === 'parallax' ? PARALLAX_SVG : ''}
-    <p class="target">찾아야 할 천체: <b>${esc(m.goal)}</b><br><span style="font-size:13px;color:var(--muted)">관측 에너지 ${m.energy}${m.collect ? ' · 잘못 누르면 −1, 바닥나면 처음부터' : ' · 장비: ' + toolsFor().map(t => TOOLS[t].name).join(', ')}${m.reward ? ` · 성공하면 ${m.reward} 획득` : ''}</span></p>
+    <p class="target">찾아야 할 천체: <b>${esc(m.goal)}</b><br><span style="font-size:13px;color:var(--muted)">관측 에너지 ${m.energy}${m.collect ? ' · 틀리면 3초 동안 망원경이 흔들려요 (별점에도 반영)' : ' · 장비: ' + toolsFor().map(t => TOOLS[t].name).join(', ')}${m.reward ? ` · 성공하면 ${m.reward} 획득` : ''}</span></p>
     <button class="go" id="start">관측 시작</button>`);
   $('start').onclick = () => { S.phase = 'play'; save(); close(); render(); $('sky').focus({ preventScroll: true }); };
 }
@@ -448,7 +488,7 @@ function renderCrew() {
   $('crew').innerHTML = teamHtml + `<ol class="rank">${show.map(p => { const i = list.indexOf(p), tr = tierOf(p.points || 0);
     return `<li class="${p.id === S.net.id ? 'me' : ''}"><span class="pos">${i + 1}</span><div style="min-width:0"><div class="nm"><span class="tdot" style="--tc:${TEAMS[p.team || 0].col}"></span><span class="tier t${tr.i}">${tr.nm}</span> ${esc(p.nickname)}${p.finished ? ' 🏁' : ''}</div><div class="bar"><i style="width:${p.mission / MISSIONS.length * 100}%"></i></div></div>
       <span class="got"><b>${(p.points || 0).toLocaleString()}P</b></span></li>`; }).join('')}</ol>
-    <p class="muted" style="font-size:12px;margin:8px 0 0">${list.length}명 탐사 중 · 순위는 탐사 점수 순 · <a href="board.html?code=${esc(S.net.code)}" target="_blank" rel="noopener" style="color:var(--cyan)">전체 현황판 크게 보기</a></p>`;
+    <p class="muted" style="font-size:12px;margin:8px 0 0">${list.length}명 탐사 중 · 순위는 탐사 점수 순</p>`;
 }
 let seenEv = null;
 function renderFeed(ev) {
@@ -680,7 +720,7 @@ function onDuel(d) {
       <div class="timer"><i id="ibar" style="width:100%"></i></div>
       <div class="row"><button class="go" id="acc">수락</button><button class="ghost" id="dec">거절</button></div>`);
     let w = 15; const t = setInterval(() => { w -= 0.2; const b = $('ibar'); if (b) b.style.width = Math.max(0, w / 15 * 100) + '%'; if (w <= 0) reply(false); }, 200);
-    const reply = ok => { clearInterval(t); if (crewSub) crewSub.fast(90000); SQNet.duelReply(S.net, d.id, ok).catch(() => {}); if (!ok) { duelBusy = false; close2(); } else open2('<h2 style="font-size:22px">대결 준비 중…</h2>'); };
+    const reply = ok => { clearInterval(t); if (crewSub) crewSub.fast(90000); SQNet.duelReply(S.net, d.id, ok).catch(() => {}); if (!ok) { duelBusy = false; close2(); } else { open2('<h2 style="font-size:22px">대결 준비 중…</h2>'); setTimeout(() => { if (!duelSeen.has(d.id + ':active')) { duelBusy = false; close2(); toast('대결을 시작하지 못했어요. 잠시 후 다시 시도해 주세요.'); } }, 15000); } };
     $('acc').onclick = () => reply(true); $('dec').onclick = () => reply(false);
     return;
   }
@@ -710,6 +750,8 @@ function playDuel(d, other) {
     SQNet.duelSubmit(S.net, d.id, score, Date.now() - t0).catch(() => {}); if (crewSub) crewSub.fast(60000);
     open2(`<div class="eyebrow">⚔ 대결 완료</div><h2 style="font-size:22px">5문제 중 ${score}문제 정답!</h2><p class="muted">${esc(other)} 탐정의 결과를 기다리는 중…</p><button class="ghost" id="x2">닫고 기다리기</button>`);
     $('x2').onclick = close2;
+    // 상대가 창을 닫아 결과가 안 오면 60초 뒤 대결을 정리 (다음 대결 신청을 막지 않게)
+    setTimeout(() => { if (!duelSeen.has(d.id + ':done')) { duelBusy = false; toast(`${other} 탐정의 응답이 없어 대결이 끝났어요. 별은 그대로예요.`); if (!ov2.hidden && card2.textContent.includes('기다리는 중')) close2(); } }, 60000);
   }
   show();
 }
@@ -767,6 +809,15 @@ function showMemory(mg) {
     go.onclick = () => { close(); next(); };
   }
 }
+
+// ---------- 나가기 ----------
+$('exit').onclick = () => {
+  open2(`<div class="eyebrow">나가기</div><h2 style="font-size:22px">탐사를 그만하고 처음 화면으로 갈까요?</h2>
+    <p class="muted">${S.net ? '현황판에 남은 점수는 그대로 남아요. 다시 들어오면 새 탐사선으로 시작해요.' : '혼자 탐사한 기록이 지워져요.'}</p>
+    <div class="row"><button class="go" id="exitYes">처음 화면으로</button><button class="ghost" id="exitNo">계속 탐사하기</button></div>`);
+  $('exitNo').onclick = close2;
+  $('exitYes').onclick = () => { if (crewSub) { crewSub.stop(); crewSub = null; } crewPlayers = []; feedEv = []; seenEv = null; S = fresh(); save(); close2(); close(); render(); connectCrew(); showJoin(); };
+};
 
 // ---------- 소리 ----------
 let musicWanted = false; try { musicWanted = localStorage.getItem('sq-music') === '1'; } catch (e) {}

@@ -256,3 +256,41 @@ button.item { animation: glow 2.4s ease-in-out infinite; }
 .teamrank .tn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; } .teamrank .tn em { font-style: normal; color: var(--muted); font-weight: 400; font-size: 12px; }
 .teamrank .tp { font-family: var(--f-mono); color: var(--amber); }
 .pvpbtn.gift { width: 100%; } .pvpbtn.gift:not(:disabled):hover { border-color: var(--good); }
+
+.mi { width: 18px; height: 18px; flex: none; }
+.meter .ml { font-size: 12px; }
+.meter.energy { color: var(--amber); font-size: 15px; }
+.meter.exitb { cursor: pointer; color: var(--muted); }
+.meter.exitb:hover { color: var(--bad); border-color: var(--bad); }
+.tool { position: relative; }
+.tool .tc { font-size: 13px; letter-spacing: 1px; color: var(--amber); text-shadow: 0 0 6px rgba(243,195,90,.6); margin-top: 2px; }
+.tool .tc.ok { color: var(--good); text-shadow: none; letter-spacing: 0; font-size: 12px; }
+.tool .tc.off { color: var(--muted); text-shadow: none; letter-spacing: 0; font-size: 11px; font-family: var(--f-mono); }
+.tool .c { font-family: var(--f-body); font-size: 12px; }
+.tool.rec { border-color: var(--amber); box-shadow: 0 0 0 1px rgba(243,195,90,.35); }
+.recb { position: absolute; top: -8px; right: 8px; background: var(--amber); color: #1b1404; font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 999px; }
+
+/* 측정 패널: 크게, 읽기 쉽게 */
+.main { grid-template-columns: minmax(0, 1.45fr) minmax(340px, 1fr); }
+@media (max-width: 900px) { .main { grid-template-columns: 1fr; } }
+.panel .eyebrow, .card .eyebrow { font-family: var(--f-body); letter-spacing: .5px; font-size: 12.5px; font-weight: 600; }
+.mission .num { font-family: var(--f-mono); }
+.tool { padding: 10px 12px; gap: 3px; }
+.tool .t { font-size: 16px; display: flex; align-items: center; gap: 6px; }
+.tool .c { font-size: 13px; color: #b7c3dc; }
+.tool .tc { font-size: 15px; }
+.ric { font-size: 16px; margin-right: 6px; }
+.tool .t .ric { margin-right: 0; }
+.ro { padding: 12px 14px; }
+.ro .k { font-size: 13.5px; color: #b7c3dc; display: flex; align-items: center; }
+.ro .v { font-size: 30px; line-height: 1.2; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 2px 0 4px; }
+.ro .v small { font-family: var(--f-body); font-size: 14px; color: #b7c3dc; font-weight: 500; }
+.ro .vt { font-size: 15.5px; line-height: 1.55; margin-top: 4px; }
+.ro .note { font-size: 13.5px; color: #b7c3dc; margin-top: 4px; }
+.ro .note.big { font-size: 15px; color: var(--text); } .ro .note b { color: var(--amber); }
+.ro svg { margin-top: 8px; }
+.swatch { display: inline-block; width: 22px; height: 22px; border-radius: 50%; align-self: center; }
+.panel h3 { font-size: 22px; }
+.meter.energy .regen { font-family: var(--f-mono); font-size: 11px; color: var(--muted); margin-left: 2px; }
+.accuse:disabled { background: var(--panel-2); color: var(--muted); cursor: wait; }
+table { font-size: 14.5px; }

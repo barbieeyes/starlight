@@ -148,7 +148,25 @@ function confirmBox(title, text, fn) {
 }
 
 const code = (qs.get('code') || '').replace(/\D/g, '');
-if (code.length === 4) boardView(code); else createView();
+// 선생님 비밀번호 (화면에는 해시값만 저장)
+const PASS_HASH = '4b96764d9b4b442db0cfc62a8462199ab4c0fdbf9f520e572c3a2af9c0d48b4d';
+async function sha(t) { const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t)); return [...new Uint8Array(d)].map(x => x.toString(16).padStart(2, '0')).join(''); }
+function unlocked() { try { return sessionStorage.getItem('sq-teacher') === PASS_HASH; } catch (e) { return false; } }
+function go() { if (code.length === 4) boardView(code); else createView(); }
+if (unlocked()) go();
+else {
+  app.innerHTML = `<div class="bhead"><h1 class="logo"><span class="l1">SONGRYE</span><span class="l2">STARLIGHT BATTLE</span></h1></div>`;
+  card.innerHTML = `<div class="eyebrow">선생님 전용</div><h2>현황판 잠금</h2><p>선생님 비밀번호를 입력해 주세요.</p>
+    <div class="field"><label for="pw">비밀번호</label><input id="pw" type="password" inputmode="numeric" autocomplete="current-password"></div>
+    <div class="err" id="pwerr" role="alert"></div><div class="row"><button class="go" id="pwgo">열기</button><a class="ghost" href="./" style="text-decoration:none;color:var(--text)">게임으로 돌아가기</a></div>`;
+  ov.hidden = false; $('pw').focus();
+  const tryPw = async () => {
+    let h = ''; try { h = await sha($('pw').value.trim()); } catch (e) { $('pwerr').textContent = '이 브라우저에서는 잠금을 풀 수 없어요. https 주소로 열어 주세요.'; return; }
+    if (h === PASS_HASH) { try { sessionStorage.setItem('sq-teacher', h); } catch (e) {} ov.hidden = true; go(); }
+    else { $('pwerr').textContent = '비밀번호가 맞지 않아요.'; $('pw').select(); }
+  };
+  $('pwgo').onclick = tryPw; $('pw').onkeydown = e => { if (e.key === 'Enter') tryPw(); };
+}
 })();
 </script>
 </body>
