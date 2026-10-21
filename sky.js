@@ -7,6 +7,7 @@ let cv, ctx, dpr = 1, cw = 0, ch = 0;
 let cam = { x: W / 2, y: H / 2, z: 1 }, camT = null;
 let sector = 0, objs = [], bg = [], members = [], sprites = {}, band = null;
 let selected = null, collected = new Set(), observed = new Set(), hover = null, onPick = () => {}, onZoom = () => {};
+let hyper = 0; const hyperDur = 1.3;
 const evs = new Map(), floats = [], radarMarks = { ids: [], until: 0 };
 const ships = new Map(); // 탐사단 우주선: id -> { nick, me, aim, x, y, ang, ph, col }
 const SHIPCOL = ['121,211,232', '255,122,168', '185,162,255', '111,220,155', '255,176,98', '160,200,255'];
@@ -201,6 +202,25 @@ function genSprites(sec) {
     const r = rng(404);
     for (let i = 0; i < 140; i++) bg.push({ gal: true, x: r() * W, y: r() * H, s: 2 + r() * 5, rot: r() * 3, e: 0.3 + r() * 0.7, a: 0.15 + r() * 0.3 });
   }
+}
+
+// ---------- 초공간 도약 (구역 이동 연출) ----------
+let hyperStreaks = [];
+function drawHyper(now) {
+  const p = (now - hyper) / 1000 / hyperDur;
+  if (p >= 1) { hyper = 0; return; }
+  if (!hyperStreaks.length) hyperStreaks = Array.from({ length: 140 }, () => ({ a: Math.random() * 6.283, r: Math.random() * 0.25, s: 0.6 + Math.random() * 0.8 }));
+  const cx = cw / 2, cy = ch / 2, R = Math.hypot(cw, ch) / 2, speed = Math.sin(Math.min(1, p) * Math.PI);
+  ctx.save();
+  ctx.fillStyle = `rgba(3,6,14,${0.55 * speed})`; ctx.fillRect(0, 0, cw, ch);
+  ctx.lineCap = 'round';
+  hyperStreaks.forEach(h => {
+    const d0 = (h.r + p * h.s * 1.6) % 1.2, d1 = Math.max(0, d0 - 0.08 - speed * 0.35 * h.s);
+    ctx.strokeStyle = `rgba(${h.s > 1 ? '185,215,255' : '255,240,210'},${0.85 * speed})`; ctx.lineWidth = 1 + h.s * 1.4 * speed;
+    ctx.beginPath(); ctx.moveTo(cx + Math.cos(h.a) * d1 * R, cy + Math.sin(h.a) * d1 * R); ctx.lineTo(cx + Math.cos(h.a) * d0 * R, cy + Math.sin(h.a) * d0 * R); ctx.stroke();
+  });
+  if (p > 0.45 && p < 0.65) { ctx.fillStyle = `rgba(255,255,255,${(1 - Math.abs(p - 0.55) / 0.1) * 0.35})`; ctx.fillRect(0, 0, cw, ch); }
+  ctx.restore();
 }
 
 // ---------- 화면 밖 이름 있는 천체 방향 표시 (확대했을 때 길을 잃지 않게) ----------
@@ -409,6 +429,7 @@ function frame(now) {
   drawEvents(t);
   drawRadar(t);
   drawArrows();
+  if (hyper) drawHyper(now);
   drawShips(t, dt);
   drawFloats(dt);
 }
@@ -483,6 +504,10 @@ return {
   setSelected(id) { selected = id; },
   setObserved(set) { observed = set; },
   setFieldBright(v) { fieldBright = !!v; },
+  hyperspace() { if (!reduce) { hyper = performance.now(); hyperStreaks = []; } },
+  arrowList() { return arrows.slice(); },
+  worldToScreen(x, y) { return toScreen(x, y); },
+  shipPos(id) { const s = ships.get(id); return s && s.x != null ? toScreen(s.x, s.y) : null; },
   setCollected(set) { collected = set; },
   zoom(f) { zoomAt(cw / 2, ch / 2, f); },
   reset() { camT = clampCam({ x: W / 2, y: H / 2, z: 1 }); },

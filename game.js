@@ -22,7 +22,7 @@ const sync = (kind, body) => SQNet.progress(S.net, { ...S, sector: M().sector },
 let curSector = -1;
 Sky.init($('sky'), { onPick: pick, onZoom: z => { $('zl').textContent = '×' + z.toFixed(1); } });
 $('zin').onclick = () => Sky.zoom(1.5); $('zout').onclick = () => Sky.zoom(1 / 1.5); $('zreset').onclick = () => Sky.reset();
-function ensureSector() { const sec = M().sector; if (sec !== curSector) { curSector = sec; Sky.setSector(sec); } }
+function ensureSector() { const sec = M().sector; if (sec !== curSector) { const first = curSector < 0; curSector = sec; Sky.setSector(sec); if (!first) Sky.hyperspace(); } }
 
 function pick(id) {
   if (id.startsWith('ship:')) { openShip(id.slice(5)); return; }
@@ -80,6 +80,13 @@ function collect(o) {
   }
   save(); render();
 }
+
+// ---------- 장면 전환 연출 ----------
+function banner(sub, title) {
+  const b = $('banner'); $('bsub').textContent = sub; $('btitle').textContent = title;
+  b.classList.remove('play'); void b.offsetWidth; b.classList.add('play');
+}
+function flash(color) { const f = $('flash'); f.style.background = `radial-gradient(ellipse at center, ${color}, transparent 70%)`; f.classList.remove('play'); void f.offsetWidth; f.classList.add('play'); }
 
 // ---------- render ----------
 function bump(id, cls) { const el = $(id); el.classList.remove('bump', 'lose'); void el.offsetWidth; el.classList.add(cls); }
@@ -302,6 +309,7 @@ const PARALLAX_SVG = `<svg viewBox="0 0 520 190" role="img" aria-label="1월과 
   <circle cx="360" cy="150" r="6" fill="#4d8bff"/><text x="360" y="176" fill="#ff7aa8" font-size="11" text-anchor="middle">7월 지구</text>
 </svg>`;
 function showIntro() {
+  SQAudio.setMode(0);
   const m = M(), sec = SEC(), first = MISSIONS.findIndex(x => x.sector === m.sector) === S.mi;
   open(`<div class="eyebrow">${first ? `SECTOR ${m.sector + 1} · ${sec.en}` : `MISSION ${m.code} / ${MISSIONS.length}`}</div>
     <h2>${first ? esc(sec.nm) + ' 도착' : esc(m.title)}</h2>
@@ -310,10 +318,11 @@ function showIntro() {
     ${m.diagram === 'parallax' ? PARALLAX_SVG : ''}
     <p class="target">찾아야 할 천체: <b>${esc(m.goal)}</b><br><span style="font-size:13px;color:var(--muted)">관측 에너지 ${m.energy}${m.collect ? ' · 틀리면 3초 동안 망원경이 흔들려요 (별점에도 반영)' : ' · 장비: ' + toolsFor().map(t => TOOLS[t].name).join(', ')}${m.reward ? ` · 성공하면 ${m.reward} 획득` : ''}</span></p>
     <button class="go" id="start">관측 시작</button>`);
-  $('start').onclick = () => { S.phase = 'play'; save(); close(); render(); $('sky').focus({ preventScroll: true }); };
+  $('start').onclick = () => { SQAudio.setMode(1); S.phase = 'play'; save(); close(); render(); banner(`MISSION ${m.code}`, m.title); SQAudio.sfx('warp'); const hd = $('hud'); hd.classList.remove('pop'); void hd.offsetWidth; hd.classList.add('pop'); $('sky').focus({ preventScroll: true }); };
 }
 
 function showQuiz() {
+  SQAudio.setMode(0);
   const m = M(), o = m.target ? objOf(m.target) : null;
   S.qLvl = S.qLvl || {}; S.qAns = S.qAns || {};
   // 1) 천체를 찾은 순간 별·보상을 확정 (새로고침해도 두 번 받지 않음)
@@ -324,7 +333,7 @@ function showQuiz() {
     S.perfect = S.perfect || {}; if (S.wrong === 0) S.perfect[S.mi] = addPoints(100, null);
     if (m.reward) S[REWARD_KEY[m.reward]]++;
     if (S.mi === MISSIONS.length - 1) S.finished = true;
-    save(); render(); bump('m-pts', 'bump'); if (m.reward) bump('m-' + REWARD_KEY[m.reward], 'bump'); SQAudio.sfx('ok');
+    save(); render(); bump('m-pts', 'bump'); if (m.reward) bump('m-' + REWARD_KEY[m.reward], 'bump'); SQAudio.sfx('ok'); flash('rgba(243,195,90,.55)');
     sync('solve', `MISSION ${m.code} 해결 ★${got}${m.reward ? ` · ${m.reward} '${o.nm}' 획득` : ''}`);
   }
   const got = S.res[S.mi], perfect = (S.perfect || {})[S.mi] || 0;
@@ -371,9 +380,15 @@ function next() {
   if (w && !S.warpDone.includes(S.mi)) { S.phase = 'warp'; save(); showWarp(w); return; }
   advance();
 }
-function advance() { S.mi++; S.en = M().energy; S.wrong = 0; S.sel = null; S.msg = null; S.phase = 'intro'; save(); SQNet.aim(S.net, M().sector, null); render(); showIntro(); }
+function advance() {
+  const prev = M().sector;
+  S.mi++; S.en = M().energy; S.wrong = 0; S.sel = null; S.msg = null; S.phase = 'intro'; save(); SQNet.aim(S.net, M().sector, null); render();
+  if (M().sector !== prev) { banner(`SECTOR ${M().sector + 1} · ${SEC().en}`, SEC().nm + ' 진입'); SQAudio.sfx('warp'); setTimeout(showIntro, 1700); }
+  else showIntro();
+}
 
 function showEnd() {
+  SQAudio.setMode(2); flash('rgba(243,195,90,.5)');
   const P = myPoints(), tr = tierOf(P), list = sortCrew(crewPlayers), rank = S.net ? list.findIndex(p => p.id === S.net.id) + 1 : 0;
   open(`<div class="eyebrow">EXPEDITION COMPLETE</div><h2>우주 원정 완료!</h2>
     <div class="endtier"><span class="tier big t${tr.i}">${tr.nm}</span><b>${P.toLocaleString()} P</b>${rank ? `<span class="muted">탐사단 ${list.length}명 중 ${rank}위</span>` : ''}</div>
@@ -390,6 +405,7 @@ function restart() { const net = S.net; S = fresh(); S.net = net; S.started = tr
 
 // ---------- 소행성대 워프 ----------
 function showWarp(w) {
+  SQAudio.setMode(2);
   open(`<div class="eyebrow">WARP · 소행성대 통과</div><h2>${esc(w.title)}</h2><p>${esc(w.text)}</p>
     <canvas class="warpcv" id="wcv" tabindex="0" aria-label="소행성 피하기. 위아래 화살표나 드래그로 조종"></canvas>
     <div class="warpbar"><span>남은 거리 <b id="wt">${w.secs}</b>초</span><span>충돌 <b id="wh">0</b>회</span><span>별 <b id="ws">${S.stars}</b></span></div>
@@ -567,7 +583,7 @@ function grabEvent(id) {
     const keys = Object.keys(ITEMS), it = keys[Math.floor(Math.random() * keys.length)];
     if (S.items.length < 3) { S.items.push(it); msg += ` · ${ITEMS[it].nm}`; } else msg += ' · 가방이 가득 찼어요';
   }
-  Sky.floatText(e.x, e.y, `${rar.nm}! ${msg}`, rar.col);
+  Sky.floatText(e.x, e.y, `${rar.nm}! ${msg}`, rar.col); if (rar.k === 'legend' || rar.k === 'epic') flash(rar.k === 'legend' ? 'rgba(255,122,168,.45)' : 'rgba(255,176,98,.4)');
   SQAudio.sfx(rar.k === 'common' ? 'measure' : 'ok'); bump('m-pts', 'bump');
   save(); paintScore(); renderItems();
   sync(rar.k === 'legend' || rar.k === 'epic' ? 'legend' : null, rar.k === 'legend' || rar.k === 'epic' ? `${rar.k === 'legend' ? '🌈 전설' : '🔶 영웅'} 이벤트 별 획득! ${msg}` : null);
@@ -729,6 +745,7 @@ function onDuel(d) {
   if (d.status === 'done') { showDuelResult(d, iamA, other); }
 }
 function playDuel(d, other) {
+  SQAudio.setMode(2);
   duelBusy = true;
   const r = rngOf(d.seed), qs = Array.from({ length: 5 }, () => makeQ(r));
   let i = 0, score = 0, left = 40; const t0 = Date.now(); let over = false;
@@ -756,6 +773,7 @@ function playDuel(d, other) {
   show();
 }
 function showDuelResult(d, iamA, other) {
+  SQAudio.setMode(S.phase === 'play' ? 1 : 0);
   duelBusy = false;
   const my = iamA ? d.a_score : d.b_score, their = iamA ? d.b_score : d.a_score;
   const win = d.winner === S.net.id, draw = !d.winner;
@@ -776,6 +794,7 @@ const MEMS = [
     pairs: [['구상 성단', '공 모양, 늙은 붉은 별'], ['산개 성단', '엉성한 무리, 젊은 파란 별'], ['방출 성운', '스스로 빛을 냄'], ['반사 성운', '별빛을 반사'], ['암흑 성운', '뒤쪽 별빛을 가림'], ['타원 은하', '나선팔이 없음']] },
 ].map(m => ({ ...m, after: Math.min(m.after, MISSIONS.length - 2) }));
 function showMemory(mg) {
+  SQAudio.setMode(0);
   const r = rngOf(Date.now() % 100000);
   const cards = []; mg.pairs.forEach((p, k) => { cards.push({ k, t: p[0], a: true }); cards.push({ k, t: p[1], a: false }); });
   for (let i = cards.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [cards[i], cards[j]] = [cards[j], cards[i]]; }
@@ -821,7 +840,7 @@ $('exit').onclick = () => {
 
 // ---------- 소리 ----------
 let musicWanted = false; try { musicWanted = localStorage.getItem('sq-music') === '1'; } catch (e) {}
-function paintSound() { const b = $('snd'); b.textContent = SQAudio.playing ? '♪ 음악 끄기' : '♪ 음악 켜기'; b.setAttribute('aria-pressed', SQAudio.playing ? 'true' : 'false'); }
+function paintSound() { const b = $('snd'); $('sndtx').textContent = SQAudio.playing ? '음악 ON' : '음악 OFF'; b.setAttribute('aria-label', SQAudio.playing ? '음악 끄기' : '음악 켜기'); b.setAttribute('aria-pressed', SQAudio.playing ? 'true' : 'false'); }
 $('snd').onclick = () => { if (SQAudio.playing) { SQAudio.stop(); musicWanted = false; } else { SQAudio.start(); musicWanted = true; } try { localStorage.setItem('sq-music', musicWanted ? '1' : '0'); } catch (e) {} paintSound(); };
 document.addEventListener('pointerdown', function first() { SQAudio.unlock(); if (musicWanted && !SQAudio.playing) { SQAudio.start(); paintSound(); } document.removeEventListener('pointerdown', first); });
 paintSound();
@@ -829,6 +848,7 @@ paintSound();
 window.SQGame = { openShip, onDuel: d => onDuel(d), spawnEventStar };
 renderItems(); scheduleEventStar(true);
 // ---------- boot ----------
+if (S.phase === 'play') SQAudio.setMode(1);
 render();
 if (!S.started) showJoin();
 else {
