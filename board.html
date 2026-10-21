@@ -47,6 +47,7 @@
 .tb .tt { display: grid; gap: 2px; min-width: 0; } .tb .tt b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .tb .tt span { font-size: 12px; color: var(--muted); }
 .tb .tbar { height: 5px; background: var(--panel-2); border-radius: 3px; overflow: hidden; } .tb .tbar i { display: block; height: 100%; background: var(--tc); }
 .tb .tpp { font-family: var(--f-mono); font-size: 22px; color: var(--amber); } .tb .tpp small { font-size: 12px; margin-left: 2px; }
+.tb .tnm { display: flex; align-items: center; gap: 6px; } .lane .nm .ship { display: inline-block; vertical-align: -3px; margin-right: 5px; }
 .lane .nm .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--tc); margin-right: 6px; box-shadow: 0 0 6px var(--tc); }
 .side .crew { padding: 12px 14px; }
 .side .feed { max-height: 460px; border-top: 0; margin: 0; padding: 0; font-size: 13.5px; gap: 6px; }
@@ -96,7 +97,7 @@ async function boardView(code) {
   app.innerHTML = `
     <div class="bhead"><div><div class="eyebrow">SONGRYE STARLIGHT BATTLE · 실시간 현황판</div><h1>${esc(title || '탐사방 ' + code)}</h1></div>
       <div class="joinbox"><div><div class="muted" style="font-size:12px">방 코드</div><div class="bigcode">${esc(code)}</div></div>
-      <div class="how">게임 주소에서 방 코드 · 닉네임 · 팀 선택<br><b id="url"></b></div></div></div>
+      <div class="how">게임 주소에서 방 코드 · 이름 · 팀 우주선 선택<br><b id="url"></b></div></div></div>
     <div class="teamboard" id="teamboard"></div>
     <div class="stats" id="stats"></div>
     <div class="bmain">
@@ -112,7 +113,7 @@ async function boardView(code) {
   let feed = [];
   window.__sub = SQNet.subscribe(code, null, {
     players: ps => { players = ps; renderLanes(code, admin); },
-    events: ev => { feed = feed.concat(ev).slice(-40); $('feed').innerHTML = feed.slice().reverse().map(e => `<li class="${esc(e.kind)}"><b>${esc(e.nickname)}</b> <span>${esc(e.body)}</span></li>`).join(''); },
+    events: ev => { feed = feed.concat(ev).slice(-40); $('feed').innerHTML = feed.slice().reverse().map(e => `<li class="${esc(e.kind)}"><b>${esc(e.nickname)}</b> <span>${esc(SQ.teamText(e.body))}</span></li>`).join(''); },
     status: ok => { $('live').className = 'live' + (ok ? '' : ' off'); $('live').textContent = ok ? 'LIVE' : '재연결 중'; },
   });
 }
@@ -122,14 +123,14 @@ function renderLanes(code, admin) {
   const sum = k => list.reduce((a, p) => a + p[k], 0);
   $('stats').innerHTML = [['탑승 탐정', list.length], ['원정 완료', list.filter(p => p.finished).length], ['최고 점수', list.length ? (list[0].points || 0).toLocaleString() + 'P' : '-'], ['모은 별', list.reduce((a, p) => a + tot(p), 0)], ['성단', sum('clusters')], ['성운', sum('nebulae')], ['은하', sum('galaxies')], ['소행성 충돌', sum('hits')]]
     .map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
-  const T = SQ.TEAMS.map((t, i) => ({ i, t, n: 0, p: 0, f: 0 })); list.forEach(p => { const x = T[p.team || 0]; x.n++; x.p += p.points || 0; if (p.finished) x.f++; });
+  const T = SQ.TEAMS.map((t, i) => ({ i, t, n: 0, p: 0, f: 0 })); list.forEach(p => { const x = T[p.team || 0] || T[0]; x.n++; x.p += p.points || 0; if (p.finished) x.f++; });
   const tl = T.filter(x => x.n).sort((a, b) => b.p - a.p), top = tl.length ? tl[0].p || 1 : 1;
-  $('teamboard').innerHTML = tl.length ? tl.map((x, k) => `<div class="tb ${k === 0 ? 'lead' : ''}" style="--tc:${x.t.col}"><div class="tk">${k + 1}</div><div class="tt"><b>${x.i + 1}팀 ${x.t.nm}</b><span>${x.n}명${x.f ? ` · 완주 ${x.f}` : ''}</span><div class="tbar"><i style="width:${x.p / top * 100}%"></i></div></div><div class="tpp">${x.p.toLocaleString()}<small>P</small></div></div>`).join('') : '';
+  $('teamboard').innerHTML = tl.length ? tl.map((x, k) => `<div class="tb ${k === 0 ? 'lead' : ''}" style="--tc:${x.t.col}"><div class="tk">${k + 1}</div><div class="tt"><b class="tnm">${SQ.shipIcon(x.t.col, 22)}${SQ.teamName(x.i)}</b><span>${x.n}명${x.f ? ` · 완주 ${x.f}` : ''}</span><div class="tbar"><i style="width:${x.p / top * 100}%"></i></div></div><div class="tpp">${x.p.toLocaleString()}<small>P</small></div></div>`).join('') : '';
   if (!list.length) { $('lanes').innerHTML = '<p class="empty" style="padding:10px 6px">아직 탑승한 탐정이 없어요. 방 코드를 알려 주세요!</p>'; return; }
   $('lanes').innerHTML = list.map((p, i) => {
     const flash = prevMission.has(p.id) && prevMission.get(p.id) !== p.mission;
     const cells = Array.from({ length: N }, (_, k) => `<i class="${k < p.mission ? 's' + SECT[k] : ''} ${k === p.mission && !p.finished ? 'cur' : ''}"></i>`).join('');
-    return `<div class="lane ${flash ? 'flash' : ''}"><span class="pos">${i + 1}</span><span class="nm"><i class="dot" style="--tc:${SQ.TEAMS[p.team || 0].col}"></i>${esc(p.nickname)}${p.finished ? ' 🏁' : ''}</span>
+    return `<div class="lane ${flash ? 'flash' : ''}"><span class="pos">${i + 1}</span><span class="nm">${SQ.shipIcon((SQ.TEAMS[p.team || 0] || SQ.TEAMS[0]).col, 16)}${esc(p.nickname)}${p.finished ? ' 🏁' : ''}</span>
       <div class="track" title="${p.mission}/${N}">${cells}</div>
       <span class="got"><b class="pp">${(p.points || 0).toLocaleString()}P</b> <span class="tier t${tierOf(p.points || 0)}">${TIERS[tierOf(p.points || 0)][0]}</span><br>★${tot(p)} · ${p.clusters}·${p.nebulae}·${p.galaxies}${p.hits ? ` · ☄${p.hits}` : ''}</span>
       ${admin ? `<button class="x" data-id="${p.id}" aria-label="${esc(p.nickname)} 내보내기">×</button>` : '<span></span>'}</div>`;

@@ -81,6 +81,8 @@ return {
   createRoom: title => rpc('sq_create_room', { p_title: title }),
   join: (code, nick, team) => rpc('sq_join2', { p_code: code, p_nick: nick, p_team: team }),
   gift: (net, target) => rpc('sq_gift', { p_id: net.id, p_token: net.token, p_target: target }),
+  // 이 방에서 이미 쓰고 있는 팀 번호들 (입장 화면에서 친구가 추가한 팀을 보여 주려고)
+  roomTeams: async code => { if (!sb) return []; try { const s = await rpc('sq_state', { p_code: code, p_since: 2147483647, p_me: null }); return [...new Set((s && s.players || []).map(p => p.team || 0))]; } catch (e) { return []; } },
   roomTitle: async code => { if (!sb) return null; try { const { data } = await sb.from('sq_rooms').select('title').eq('code', code).maybeSingle(); return data ? data.title : null; } catch (e) { return null; } },
   progress(net, s, kind, body) {
     if (!net || !sb) return;

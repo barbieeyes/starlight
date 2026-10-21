@@ -1,6 +1,7 @@
 /* 별빛탐정단: 우주 원정 — 게임 진행 */
 (() => {
-const { MISSIONS, SECTORS, TOOLS, WARPS, STARS, starWrong, isHot, isCool, QPTS, TEAMS } = SQ;
+const { MISSIONS, SECTORS, TOOLS, WARPS, STARS, starWrong, isHot, isCool, QPTS, TEAMS, BASE_TEAMS, teamName, shipIcon, teamText } = SQ;
+const tm = i => TEAMS[i] || TEAMS[0];
 const COLORS = { '청색':'#8fb4ff','청백색':'#b6ccff','백색':'#f4f6ff','황백색':'#fff0c4','황색':'#ffd970','주황색':'#ffb062','적색':'#ff7a5c' };
 const REWARD_KEY = { '성단':'clusters', '성운':'nebulae', '은하':'galaxies' };
 const KEY = 'sq2-state';
@@ -97,7 +98,7 @@ function render() {
   Sky.setCollected(new Set(m.collect ? (S.col[S.mi] || []) : []));
   Sky.setFieldBright(!!m.collect && !S.finished);
   Sky.setObserved(new Set(Object.keys(S.obs).filter(id => sec.objs.some(o => o.id === id))));
-  $('who').innerHTML = S.net ? `<span class="tdot" style="--tc:${TEAMS[S.net.team || 0].col}"></span>${(S.net.team || 0) + 1}팀 ${TEAMS[S.net.team || 0].nm} · <b>${esc(S.net.nickname)}</b> · 방 ${esc(S.net.code)}` : '혼자 탐사 중';
+  $('who').innerHTML = S.net ? `<span class="whoteam">${shipIcon(tm(S.net.team || 0).col, 18)}${teamName(S.net.team || 0)}</span> · <b>${esc(S.net.nickname)}</b> · 방 ${esc(S.net.code)}` : '혼자 탐사 중';
   $('en').textContent = S.en;
   $('cells').innerHTML = Array.from({ length: m.energy }, (_, i) => `<i class="${i < S.en ? '' : 'off'}"></i>`).join('');
   ['clusters', 'nebulae', 'galaxies'].forEach(k => $(k).textContent = S[k]);
@@ -270,25 +271,48 @@ function showJoin() {
   const qs = new URLSearchParams(location.search), preset = (qs.get('code') || '').replace(/\D/g, '').slice(0, 4);
   open(`<div class="eyebrow">3학년 과학 · 별과 우주</div><div class="logo big"><span class="l1">SONGRYE</span><span class="l2">STARLIGHT BATTLE</span></div>
     <p>어느 밤, 우주 관측소의 지도에서 별과 성단, 성운, 은하가 하나둘 사라졌다. 별빛탐정단은 태양 이웃에서 출발해 점점 먼 우주로 나아가며 사라진 천체를 찾아야 한다. 이벤트 별을 낚아채고, 친구 탐사선과 배틀하며 탐사 점수 1위에 도전하라!</p>
-    <div class="row" style="align-items:flex-end">
-      <div class="field"><label for="jcode">방 코드 (4자리)</label><input class="code" id="jcode" inputmode="numeric" maxlength="4" autocomplete="off" value="${preset}"></div>
-      <div class="field" style="flex:1;min-width:160px"><label for="jnick">내 이름 · 우주선 위에 표시돼요 (12자까지)</label><input id="jnick" maxlength="12" autocomplete="off" placeholder="예: 3반 이정연"></div>
+    <div class="joinrow">
+      <div class="field fcode"><label for="jcode">방 코드 (4자리)</label><input class="code" id="jcode" inputmode="numeric" maxlength="4" autocomplete="off" value="${preset}"></div>
+      <div class="field fnick"><label for="jnick">내 이름 · 우주선 위에 표시돼요</label><input id="jnick" maxlength="12" autocomplete="off" placeholder="예: 3반 이정연"></div>
     </div>
-    <div class="field"><label>팀 선택 · 같은 팀끼리는 공격할 수 없고, 팀 점수가 합산돼요</label>
-      <div class="teams" role="radiogroup">${TEAMS.map((t, i) => `<button type="button" class="teamb" role="radio" aria-checked="false" data-t="${i}" style="--tc:${t.col}"><i></i><b>${i + 1}팀</b><span>${t.nm}</span></button>`).join('')}</div></div>
+    <div class="field"><label id="tlbl">우리 팀 우주선 고르기 · 같은 팀끼리는 공격할 수 없고, 점수가 합쳐져요</label>
+      <div class="teams" id="teams" role="radiogroup" aria-labelledby="tlbl"></div>
+      <div class="palette" id="palette" hidden><div class="pl">새 팀 색 고르기</div><div class="pcols" id="pcols"></div></div></div>
     <div class="err" id="jerr" role="alert"></div>
     <div class="row"><button class="go" id="jgo">탐사선 탑승</button><button class="ghost" id="jsolo">혼자 탐사하기</button></div>
     <p class="muted" style="font-size:13px">선생님이신가요? <a href="board.html" style="color:var(--cyan)">선생님 현황판 (비밀번호 필요)</a></p>`);
   if (preset) $('jnick').focus();
   let team = -1;
-  card.querySelectorAll('.teamb').forEach(b => b.onclick = () => { team = +b.dataset.t; $('jerr').textContent = ''; card.querySelectorAll('.teamb').forEach(x => x.setAttribute('aria-checked', x === b ? 'true' : 'false')); SQAudio.sfx('pick'); });
+  const shown = new Set(Array.from({ length: BASE_TEAMS }, (_, i) => i));
+  const drawTeams = () => {
+    const ids = [...shown].sort((x, y) => x - y), more = TEAMS.length - shown.size;
+    $('teams').innerHTML = ids.map(i => `<button type="button" class="teamb" role="radio" aria-checked="${i === team}" aria-label="${teamName(i)}" data-t="${i}" style="--tc:${TEAMS[i].col}">${shipIcon(TEAMS[i].col, 40)}<b>${TEAMS[i].nm}</b></button>`).join('')
+      + (more ? `<button type="button" class="teamb addt" id="addt" aria-expanded="${!$('palette').hidden}"><span class="plus">＋</span><b>팀 추가</b></button>` : '');
+    $('teams').querySelectorAll('.teamb[data-t]').forEach(b => b.onclick = () => pickTeam(+b.dataset.t));
+    if (more) $('addt').onclick = () => { const p = $('palette'); p.hidden = !p.hidden; drawPalette(); drawTeams(); if (!p.hidden) p.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); };
+  };
+  const drawPalette = () => {
+    $('pcols').innerHTML = TEAMS.map((t, i) => shown.has(i) ? '' : `<button type="button" class="pcol" data-t="${i}" style="--tc:${t.col}" aria-label="${teamName(i)} 추가">${shipIcon(t.col, 30)}<span>${t.nm}</span></button>`).join('');
+    $('pcols').querySelectorAll('.pcol').forEach(b => b.onclick = () => { shown.add(+b.dataset.t); $('palette').hidden = true; pickTeam(+b.dataset.t); });
+  };
+  const pickTeam = i => { team = i; $('jerr').textContent = ''; drawTeams(); SQAudio.sfx('pick'); };
+  drawTeams();
+  // 방 코드를 다 쓰면, 친구들이 이미 추가해 둔 팀도 자동으로 보여 줌
+  let lastCode = '';
+  const peekRoom = async () => {
+    const c = $('jcode').value.replace(/\D/g, ''); if (c.length !== 4 || c === lastCode) return; lastCode = c;
+    const used = await SQNet.roomTeams(c); let added = false;
+    used.forEach(i => { if (i >= 0 && i < TEAMS.length && !shown.has(i)) { shown.add(i); added = true; } });
+    if (added) { drawTeams(); if (!$('palette').hidden) drawPalette(); }
+  };
+  $('jcode').addEventListener('input', peekRoom); peekRoom();
   const go = async () => {
     const code = $('jcode').value.replace(/\D/g, ''), nick = $('jnick').value.trim();
     if (code.length !== 4) { $('jerr').textContent = '4자리 방 코드를 입력해 주세요.'; return; }
     if (!nick) { $('jerr').textContent = '닉네임을 입력해 주세요.'; return; }
     if (team < 0) { $('jerr').textContent = '팀을 골라 주세요.'; return; }
     $('jgo').disabled = true; $('jerr').textContent = '';
-    try { const r = await SQNet.join(code, nick, team); if (!r || !r.id || !r.token) throw new Error('join'); S.net = { id:r.id, token:r.token, nickname:r.nickname, code, team }; startGame(); }
+    try { const r = await SQNet.join(code, nick, team); if (!r || !r.id || !r.token) throw new Error('join'); const got = typeof r.team === 'number' ? r.team : team; S.net = { id:r.id, token:r.token, nickname:r.nickname, code, team: got }; startGame(); if (got !== team) toast(`서버가 아직 ${teamName(team)}을 지원하지 않아 ${teamName(got)}으로 탑승했어요. 선생님께 알려 주세요.`, 'bad'); }
     catch (e) { $('jerr').textContent = SQNet.errText(e); $('jgo').disabled = false; }
   };
   $('jgo').onclick = go; $('jnick').onkeydown = e => { if (e.key === 'Enter') go(); };
@@ -474,8 +498,8 @@ function showWarp(w) {
 // ---------- 탐사단 우주선 ----------
 function renderShips() {
   const sec = M().sector, meId = S.net ? S.net.id : 'me';
-  const others = crewPlayers.filter(p => p.id !== meId && p.sector === sec && !p.finished).map(p => ({ id: p.id, nick: p.nickname, aim: p.aim, col: TEAMS[p.team || 0].rgb, shield: p.shield_until && new Date(p.shield_until) > new Date() }));
-  Sky.setShips(others.concat([{ id: meId, nick: S.net ? S.net.nickname : '내 탐사선', me: true, aim: S.sel, col: S.net ? TEAMS[S.net.team || 0].rgb : '243,195,90' }]));
+  const others = crewPlayers.filter(p => p.id !== meId && p.sector === sec && !p.finished).map(p => ({ id: p.id, nick: p.nickname, aim: p.aim, col: tm(p.team || 0).rgb, shield: p.shield_until && new Date(p.shield_until) > new Date() }));
+  Sky.setShips(others.concat([{ id: meId, nick: S.net ? S.net.nickname : '내 탐사선', me: true, aim: S.sel, col: S.net ? tm(S.net.team || 0).rgb : '243,195,90' }]));
   const far = {}; crewPlayers.forEach(p => { if (p.id !== meId && (p.sector !== sec || p.finished)) { const k = p.finished ? '원정 완료' : SECTORS[p.sector] ? SECTORS[p.sector].nm : '?'; far[k] = (far[k] || 0) + 1; } });
   const txt = Object.entries(far).map(([k, n]) => `${k} ${n}명`).join(' · ');
   const el = $('farcrew'); el.hidden = !txt; el.textContent = txt ? '다른 구역 탐사선: ' + txt : '';
@@ -498,11 +522,11 @@ function sortCrew(ps) { return [...ps].sort((a, b) => (b.points || 0) - (a.point
 function renderCrew() {
   const list = sortCrew(crewPlayers), meIdx = list.findIndex(p => p.id === S.net.id);
   let show = list.slice(0, 8); if (meIdx >= 8) show = show.concat([list[meIdx]]);
-  const teams = TEAMS.map((t, i) => ({ i, t, n: 0, p: 0 })); crewPlayers.forEach(p => { const x = teams[p.team || 0]; x.n++; x.p += p.points || 0; });
+  const teams = TEAMS.map((t, i) => ({ i, t, n: 0, p: 0 })); crewPlayers.forEach(p => { const x = teams[p.team || 0] || teams[0]; x.n++; x.p += p.points || 0; });
   const tl = teams.filter(x => x.n).sort((a, b) => b.p - a.p), top = tl.length ? tl[0].p || 1 : 1;
-  const teamHtml = `<div class="teamrank">${tl.map((x, k) => `<div class="tr ${x.i === (S.net.team || 0) ? 'mine' : ''}" style="--tc:${x.t.col}"><span class="k">${k + 1}</span><span class="tn">${x.i + 1}팀 ${x.t.nm} <em>${x.n}명</em></span><span class="tp">${x.p.toLocaleString()}P</span><i style="width:${x.p / top * 100}%"></i></div>`).join('')}</div>`;
+  const teamHtml = `<div class="teamrank">${tl.map((x, k) => `<div class="tr ${x.i === (S.net.team || 0) ? 'mine' : ''}" style="--tc:${x.t.col}"><span class="k">${k + 1}</span><span class="tn">${shipIcon(x.t.col, 18)}${teamName(x.i)} <em>${x.n}명</em></span><span class="tp">${x.p.toLocaleString()}P</span><i style="width:${x.p / top * 100}%"></i></div>`).join('')}</div>`;
   $('crew').innerHTML = teamHtml + `<ol class="rank">${show.map(p => { const i = list.indexOf(p), tr = tierOf(p.points || 0);
-    return `<li class="${p.id === S.net.id ? 'me' : ''}"><span class="pos">${i + 1}</span><div style="min-width:0"><div class="nm"><span class="tdot" style="--tc:${TEAMS[p.team || 0].col}"></span><span class="tier t${tr.i}">${tr.nm}</span> ${esc(p.nickname)}${p.finished ? ' 🏁' : ''}</div><div class="bar"><i style="width:${p.mission / MISSIONS.length * 100}%"></i></div></div>
+    return `<li class="${p.id === S.net.id ? 'me' : ''}"><span class="pos">${i + 1}</span><div style="min-width:0"><div class="nm">${shipIcon(tm(p.team || 0).col, 15)}<span class="tier t${tr.i}">${tr.nm}</span> ${esc(p.nickname)}${p.finished ? ' 🏁' : ''}</div><div class="bar"><i style="width:${p.mission / MISSIONS.length * 100}%"></i></div></div>
       <span class="got"><b>${(p.points || 0).toLocaleString()}P</b></span></li>`; }).join('')}</ol>
     <p class="muted" style="font-size:12px;margin:8px 0 0">${list.length}명 탐사 중 · 순위는 탐사 점수 순</p>`;
 }
@@ -519,10 +543,10 @@ function renderFeed(ev) {
       if (seenEv === null && Date.now() - new Date(e.created_at) > 120000) return;
       S.en += 2; save(); render(); SQAudio.sfx('measure'); toast(`🤝 팀원 ${e.nickname} 탐정이 에너지 2를 보내 줬어요!`);
     });
-    if (seenEv !== null) ev.filter(e => e.id > seenEv && e.kind === 'legend' && e.player_id !== S.net.id).forEach(e => toast(`${e.nickname} 탐정: ${e.body}`, 'legend'));
+    if (seenEv !== null) ev.filter(e => e.id > seenEv && e.kind === 'legend' && e.player_id !== S.net.id).forEach(e => toast(`${e.nickname} 탐정: ${teamText(e.body)}`, 'legend'));
     seenEv = Math.max(seenEv || 0, maxId);
   }
-  $('feed').innerHTML = feedEv.slice(-8).reverse().map(e => `<li class="${e.kind}"><b>${esc(e.nickname)}</b> <span>${esc(e.body)}</span></li>`).join('');
+  $('feed').innerHTML = feedEv.slice(-8).reverse().map(e => `<li class="${e.kind}"><b>${esc(e.nickname)}</b> <span>${esc(teamText(e.body))}</span></li>`).join('');
 }
 
 
@@ -660,7 +684,7 @@ function openShip(pid) {
   if (mate) return openMate(p, tot);
   const canAtk = S.phase === 'play' && S.en >= 3 && !shield && tot > 0 && cd === 0;
   const why = S.phase !== 'play' ? '관측 중일 때만 공격할 수 있어요.' : shield ? '보호막이 켜져 있어요. 잠시 뒤에 다시 시도해요.' : tot <= 0 ? '빼앗을 별이 없어요.' : cd ? `공격 장비 충전 중 (${cd}초)` : S.en < 3 ? '관측 에너지가 3 이상 필요해요.' : '빠른 문제 1개를 맞히면 별 1개를 빼앗아요. 틀리면 에너지만 줄어요.';
-  open2(`<div class="eyebrow" style="color:${TEAMS[p.team || 0].col}">상대 팀 · ${(p.team || 0) + 1}팀 ${TEAMS[p.team || 0].nm}</div><h2 style="font-size:24px">${esc(p.nickname)} 탐정</h2>
+  open2(`<div class="eyebrow" style="color:${tm(p.team || 0).col}">상대 팀 · ${shipIcon(tm(p.team || 0).col, 18)} ${teamName(p.team || 0)}</div><h2 style="font-size:24px">${esc(p.nickname)} 탐정</h2>
     <div class="rep"><div><span>가진 별</span><b style="color:var(--amber)">★ ${tot}</b></div><div><span>진행</span><b>미션 ${Math.min(p.mission + 1, MISSIONS.length)} / ${MISSIONS.length}</b></div>${shield ? '<div><span>상태</span><b style="color:var(--cyan)">보호막 켜짐</b></div>' : ''}</div>
     <div class="pvp">
       <button class="pvpbtn atk" id="atk" ${canAtk ? '' : 'disabled'}><b>⚡ 별 뺏기 공격</b><span>관측 에너지 3 사용</span></button>
@@ -677,7 +701,7 @@ function openMate(p, tot) {
   const cd = Math.max(0, Math.ceil(((S.lastGift || 0) + 20000 - Date.now()) / 1000));
   const can = S.phase === 'play' && S.en >= 3 && cd === 0;
   const why = S.phase !== 'play' ? '관측 중일 때만 보낼 수 있어요.' : cd ? `다시 보낼 수 있을 때까지 ${cd}초` : S.en < 3 ? '내 에너지가 3 이상 있어야 보낼 수 있어요.' : '내 에너지 2를 팀원에게 보내요. 팀원이 미션을 더 빨리 깨면 팀 점수가 올라가요!';
-  open2(`<div class="eyebrow" style="color:${TEAMS[p.team || 0].col}">우리 팀 · ${(p.team || 0) + 1}팀 ${TEAMS[p.team || 0].nm}</div><h2 style="font-size:24px">${esc(p.nickname)} 탐정</h2>
+  open2(`<div class="eyebrow" style="color:${tm(p.team || 0).col}">우리 팀 · ${shipIcon(tm(p.team || 0).col, 18)} ${teamName(p.team || 0)}</div><h2 style="font-size:24px">${esc(p.nickname)} 탐정</h2>
     <div class="rep"><div><span>탐사 점수</span><b style="color:var(--amber)">${(p.points || 0).toLocaleString()}P</b></div><div><span>진행</span><b>미션 ${Math.min(p.mission + 1, MISSIONS.length)} / ${MISSIONS.length}</b></div></div>
     <button class="pvpbtn gift" id="gift" ${can ? '' : 'disabled'}><b>🤝 에너지 2 보내기</b><span>같은 팀끼리는 공격·대결 대신 서로 도와요</span></button>
     <p class="muted" style="font-size:13px;margin:0">${esc(why)}</p>

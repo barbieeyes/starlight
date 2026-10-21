@@ -280,13 +280,23 @@ const Q3 = {
 };
 MISSIONS.forEach(m => { if (Q3[m.title]) m.q3 = Q3[m.title]; });
 
-// 팀 (반마다 최대 8팀, 팀마다 탐사선 색이 다름)
+// 팀 = 우주선 색 (기본 8팀 + '팀 추가'로 8색 더, 최대 16팀). 순서(번호)는 서버에 저장되므로 바꾸지 말 것
 const TEAMS = [
-  { nm:'레드 피닉스', col:'#ff5d6c', rgb:'255,93,108' }, { nm:'오렌지 코멧', col:'#ff9a3c', rgb:'255,154,60' },
-  { nm:'옐로 선', col:'#ffd54a', rgb:'255,213,74' }, { nm:'그린 오로라', col:'#4fe08a', rgb:'79,224,138' },
-  { nm:'민트 네뷸라', col:'#4fd8d0', rgb:'79,216,208' }, { nm:'블루 펄서', col:'#5aa0ff', rgb:'90,160,255' },
-  { nm:'퍼플 퀘이사', col:'#b98bff', rgb:'185,139,255' }, { nm:'핑크 노바', col:'#ff7ad1', rgb:'255,122,209' },
-];
+  ['빨강', '#ff5d6c'], ['주황', '#ff9a3c'], ['노랑', '#ffd54a'], ['초록', '#4fe08a'],
+  ['민트', '#4fd8d0'], ['파랑', '#5aa0ff'], ['보라', '#b98bff'], ['분홍', '#ff7ad1'],
+  ['연두', '#b8ec4c'], ['하늘', '#8fd8ff'], ['자주', '#e04fe8'], ['산호', '#ff9f8a'],
+  ['갈색', '#c8925e'], ['흰색', '#f2f5ff'], ['은색', '#9aa6c2'], ['청록', '#1fb5a5'],
+].map(([nm, col]) => ({ nm, col, rgb: [1, 3, 5].map(i => parseInt(col.slice(i, i + 2), 16)).join(',') }));
+const BASE_TEAMS = 8;
+const teamName = i => (TEAMS[i] || TEAMS[0]).nm + ' 팀';
+// 팀 아이콘: 팀 색 우주선 (하늘에 날아다니는 탐사선과 같은 모양)
+function shipIcon(col, size = 28) {
+  return `<svg class="ship" width="${size}" height="${size}" viewBox="0 0 32 32" aria-hidden="true"><path d="M3.5 16 L8.5 12.6 L8.5 19.4 Z" fill="${col}" opacity=".55"/>` +
+    `<path d="M29 16 L7 6.5 L11.5 16 L7 25.5 Z" fill="#e8eef9" stroke="${col}" stroke-width="1.6" stroke-linejoin="round"/>` +
+    `<path d="M11.5 16 L7 6.5 L9.5 16 L7 25.5 Z" fill="${col}"/><circle cx="18" cy="16" r="3.4" fill="${col}"/><circle cx="18.8" cy="15.2" r="1.1" fill="#fff" opacity=".8"/></svg>`;
+}
+// 서버 소식 문구의 'N팀'을 색 팀 이름으로 바꿔 보여 줌 (예: '3팀 탐사선에 탑승' → '노랑 팀 탐사선에 탑승')
+const teamText = s => String(s).replace(/(\d{1,2})팀/g, (m, n) => (+n >= 1 && +n <= TEAMS.length) ? teamName(+n - 1) : m);
 
 // 구역 사이 워프 (소행성대)
 const WARPS_RAW = [
@@ -297,5 +307,5 @@ const WARPS_RAW = [
 
 const WARPS = WARPS_RAW.map(w => ({ ...w, after: MISSIONS.map(m => m.sector).lastIndexOf(w.from) }));
 
-return { TEAMS, QPTS, STARS, FIELD, isHot, isCool, CLUSTERS, NEBULAE, GALAXIES, TOOLS, SECTORS, MISSIONS, WARPS, starWrong };
+return { TEAMS, BASE_TEAMS, teamName, shipIcon, teamText, QPTS, STARS, FIELD, isHot, isCool, CLUSTERS, NEBULAE, GALAXIES, TOOLS, SECTORS, MISSIONS, WARPS, starWrong };
 })();

@@ -376,12 +376,14 @@ let t0 = performance.now(), lastNow = performance.now(); const perf = { n: 0, t:
 function frame(now) {
   requestAnimationFrame(frame);
   if (!ctx) return;
-  if (camT) { // 부드러운 카메라 이동
-    cam.x += (camT.x - cam.x) * 0.14; cam.y += (camT.y - cam.y) * 0.14; cam.z += (camT.z - cam.z) * 0.14;
-    if (Math.abs(camT.z - cam.z) < 0.002 && Math.abs(camT.x - cam.x) < 0.3 && Math.abs(camT.y - cam.y) < 0.3) { cam = { ...camT }; camT = null; }
+  const t = (now - t0) / 1000, dt = Math.min(0.1, (now - lastNow) / 1000); lastNow = now;
+  if (camT) { // 부드러운 카메라 이동 — 기기 속도와 상관없이 약 0.6초 안에 도착 (느린 기기에서 이동이 길게 끌리지 않게)
+    const k = 1 - Math.pow(0.86, Math.max(1, dt * 60));
+    cam.x += (camT.x - cam.x) * k; cam.y += (camT.y - cam.y) * k; cam.z += (camT.z - cam.z) * k;
+    if (Math.abs(camT.z - cam.z) < 0.004 && Math.abs(camT.x - cam.x) < 0.8 && Math.abs(camT.y - cam.y) < 0.8) { cam = { ...camT }; camT = null; }
     clampCam(cam); onZoom(cam.z);
   }
-  const t = (now - t0) / 1000, s = scale(), dt = Math.min(0.1, (now - lastNow) / 1000); lastNow = now;
+  const s = scale();
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   blitLayer(layerA, drawLayerA);
   // 2초마다 프레임 속도를 재서 느리면 저사양 모드로 (다시 빨라지면 해제)

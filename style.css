@@ -362,3 +362,37 @@ table { font-size: 14.5px; }
   .iconb .tx { display: none; } .iconb .ic { margin: 0; }
   .logo .l2 { font-size: 20px; }
 }
+
+/* ===== 입장 화면: 어떤 화면 폭에서도 칸이 튀어나오지 않게 ===== */
+.card { min-width: 0; }
+.field { min-width: 0; }
+.field input { width: 100%; min-width: 0; }
+.joinrow { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 10px; align-items: end; }
+.joinrow .field input.code { max-width: none; }
+@media (max-width: 440px) { .joinrow { grid-template-columns: minmax(0, 1fr); } }
+
+/* 팀 = 색깔 우주선 아이콘 */
+.ship { display: block; flex: none; }
+.teams { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 8px; }
+.teamb { display: grid; grid-template-columns: none; justify-items: center; align-content: center; gap: 4px; min-width: 0; padding: 10px 4px 8px; border-radius: 12px; text-align: center;
+  border: 1px solid var(--line); background: var(--panel-2); transition: transform .15s, border-color .15s, background .15s; }
+.teamb .ship { transition: transform .2s; }
+.teamb b { font-size: 13.5px; color: var(--text); white-space: nowrap; }
+.teamb:hover { border-color: var(--tc); }
+.teamb:hover .ship { transform: translateX(3px); }
+.teamb[aria-checked="true"] { border-color: var(--tc); border-width: 2px; padding: 9px 3px 7px; background: color-mix(in srgb, var(--tc) 22%, var(--panel-2)); box-shadow: 0 0 16px color-mix(in srgb, var(--tc) 45%, transparent); }
+.teamb[aria-checked="true"] .ship { transform: scale(1.12); filter: drop-shadow(0 0 6px var(--tc)); }
+.teamb[aria-checked="true"] b { color: var(--tc); }
+.teamb.addt { border-style: dashed; color: var(--muted); }
+.teamb.addt .plus { font-size: 26px; line-height: 40px; height: 40px; color: var(--cyan); }
+.teamb.addt b { color: var(--muted); font-weight: 600; }
+.teamb.addt:hover, .teamb.addt[aria-expanded="true"] { border-color: var(--cyan); }
+.palette { margin-top: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: #08111f; animation: cardIn .25s ease-out; }
+.palette .pl { font-size: 12.5px; color: var(--muted); margin-bottom: 8px; }
+.pcols { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 6px; }
+.pcol { display: grid; justify-items: center; gap: 2px; padding: 8px 2px 6px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2); font-size: 12.5px; }
+.pcol:hover { border-color: var(--tc); background: color-mix(in srgb, var(--tc) 16%, var(--panel-2)); }
+.whoteam { display: inline-flex; align-items: center; gap: 4px; }
+.teamrank .tn { display: flex; align-items: center; gap: 5px; }
+.rank .nm .ship { display: inline-block; vertical-align: -3px; margin-right: 3px; }
+.ov2 .eyebrow .ship, .card .eyebrow .ship { display: inline-block; vertical-align: -4px; }
