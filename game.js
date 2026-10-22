@@ -1034,10 +1034,13 @@ $('exit').onclick = () => {
 };
 
 // ---------- 소리 ----------
-let musicWanted = false; try { musicWanted = localStorage.getItem('sq-music') === '1'; } catch (e) {}
+let musicWanted = true; try { musicWanted = localStorage.getItem('sq-music') !== '0'; } catch (e) {} // 기본 ON (직접 끈 사람만 OFF)
 function paintSound() { const b = $('snd'); $('sndtx').textContent = SQAudio.playing ? '음악 ON' : '음악 OFF'; b.setAttribute('aria-label', SQAudio.playing ? '음악 끄기' : '음악 켜기'); b.setAttribute('aria-pressed', SQAudio.playing ? 'true' : 'false'); }
 $('snd').onclick = () => { if (SQAudio.playing) { SQAudio.stop(); musicWanted = false; } else { SQAudio.start(); musicWanted = true; } try { localStorage.setItem('sq-music', musicWanted ? '1' : '0'); } catch (e) {} paintSound(); };
-document.addEventListener('pointerdown', function first() { SQAudio.unlock(); if (musicWanted && !SQAudio.playing) { SQAudio.start(); paintSound(); } document.removeEventListener('pointerdown', first); });
+// 브라우저는 사용자가 화면을 한 번 누르거나 키를 눌러야 소리를 허락함 → 첫 터치·클릭·키 입력 순간 바로 음악 시작
+function firstTouch(e) { if (e && e.target && e.target.closest && e.target.closest('#snd')) { cleanupFirst(); return; } SQAudio.unlock(); if (musicWanted && !SQAudio.playing) { SQAudio.start(); paintSound(); } cleanupFirst(); }
+function cleanupFirst() { ['pointerdown', 'keydown', 'touchend'].forEach(k => document.removeEventListener(k, firstTouch, true)); }
+['pointerdown', 'keydown', 'touchend'].forEach(k => document.addEventListener(k, firstTouch, true));
 paintSound();
 
 // ---------- 튜토리얼 (따라 하기 · 언제든 건너뛰기) ----------
