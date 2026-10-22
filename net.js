@@ -46,19 +46,23 @@ async function flush() {
 // 방 상태 가져오기 (players / 새 events / 내 duels)
 function subscribe(code, me, on) {
   if (!sb) { on.status(false); return { stop() {}, fast() {}, now() {} }; }
-  let since = 0, alive = true, timer = null, fastUntil = 0, fails = 0, busy = false;
+  let since = 0, chatSince = 0, v2 = true, alive = true, timer = null, fastUntil = 0, fails = 0, busy = false;
   async function tick() {
     if (!alive) return;
     if (document.hidden && Date.now() > fastUntil) { schedule(6000); return; } // 다른 탭을 보고 있으면 천천히
     if (busy) { schedule(1000); return; }
     busy = true;
     try {
-      const s = await rpc('sq_state', { p_code: code, p_since: since, p_me: me || null });
+      // 채팅까지 한 번에 받기 (서버 패치 전이면 예전 방식)
+      let s;
+      if (v2) { try { s = await rpc('sq_state2', { p_code: code, p_since: since, p_me: me || null, p_chat_since: chatSince }); } catch (e) { if (/sq_state2|schema cache|Could not find/.test((e && e.message) || '')) v2 = false; else throw e; } }
+      if (!v2) s = await rpc('sq_state', { p_code: code, p_since: since, p_me: me || null });
       fails = 0; on.status(true);
       // 화면 갱신 중 오류가 나도 연결 실패로 취급하지 않고, 다음 갱신은 계속되게 따로 감쌈
       try { on.players(s.players || []); } catch (err) { console.error('[players]', err); }
       if (s.events && s.events.length) { since = Math.max(since, ...s.events.map(e => e.id)); try { on.events(s.events); } catch (err) { console.error('[events]', err); } }
       try { if (on.duels) on.duels(s.duels || []); } catch (err) { console.error('[duels]', err); }
+      if (v2 && on.chat) { const c = s.chat || []; if (c.length) chatSince = Math.max(chatSince, ...c.map(m => m.id)); try { on.chat(c, { on: s.chat_on !== false, muted: s.muted_until || null }); } catch (err) { console.error('[chat]', err); } }
     } catch (e) { fails++; on.status(false); }
     busy = false;
     schedule(Date.now() < fastUntil ? 1000 : Math.min(8000, 3000 * Math.pow(1.4, Math.min(fails, 3))));
@@ -81,6 +85,11 @@ return {
   createRoom: title => rpc('sq_create_room', { p_title: title }),
   // 같은 방·같은 이름이면 기록을 이어 받음 (서버 패치 전이면 예전 방식으로 새로 입장)
   join: async (code, nick, team) => { try { return await rpc('sq_join3', { p_code: code, p_nick: nick, p_team: team }); } catch (e) { if (/sq_join3|schema cache|Could not find/.test((e && e.message) || '')) return rpc('sq_join2', { p_code: code, p_nick: nick, p_team: team }); throw e; } },
+  chatSend: (net, scope, body) => rpc('sq_chat_send', { p_id: net.id, p_token: net.token, p_scope: scope, p_body: body }),
+  chatFeed: (code, admin, since) => rpc('sq_chat_feed', { p_code: code, p_admin: admin, p_since: since || 0 }),
+  chatSet: (code, admin, on) => rpc('sq_chat_set', { p_code: code, p_admin: admin, p_on: on }),
+  chatHide: (code, admin, id) => rpc('sq_chat_hide', { p_code: code, p_admin: admin, p_msg: id }),
+  mute: (code, admin, player, minutes) => rpc('sq_mute', { p_code: code, p_admin: admin, p_player: player, p_minutes: minutes }),
   claimAdmin: (code, pass) => rpc('sq_claim_admin', { p_code: code, p_pass: pass }),
   renameRoom: (code, admin, title) => rpc('sq_rename_room', { p_code: code, p_admin: admin, p_title: title }),
   players: async code => { const s = await rpc('sq_state', { p_code: code, p_since: 2147483647, p_me: null }); return (s && s.players) || []; },

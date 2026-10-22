@@ -66,6 +66,17 @@
 .mapbox { position: relative; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #050a17; }
 .mapbox h3 { position: absolute; left: 10px; top: 8px; margin: 0; font-size: 14px; color: var(--amber); z-index: 1; text-shadow: 0 1px 4px #000; }
 .mapbox canvas { display: block; width: 100%; aspect-ratio: 5 / 3; }
+.chatmon .cml { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 340px; overflow-y: auto; }
+.chatmon li { border-left: 3px solid var(--tc); padding: 3px 0 3px 8px; font-size: 13.5px; }
+.chatmon li.hid { opacity: .45; } .chatmon li.hid .cmb { text-decoration: line-through; }
+.chatmon .cmh { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 12px; }
+.chatmon .cmh b { color: var(--tc); font-size: 13px; }
+.chatmon .sc { font-size: 11px; padding: 0 6px; border-radius: 8px; background: var(--panel-2); color: var(--muted); } .chatmon .sc.team { color: var(--tc); }
+.chatmon time { font-family: var(--f-mono); font-size: 11px; color: var(--muted); }
+.chatmon .cma { margin-left: auto; display: flex; gap: 4px; } .chatmon .cma em { font-style: normal; color: var(--muted); font-size: 11px; }
+.chatmon .cma button { font-size: 11.5px; padding: 2px 7px; border-radius: 6px; border: 1px solid var(--line); background: none; color: var(--muted); }
+.chatmon .cma button:hover { color: var(--bad); border-color: var(--bad); }
+.chatmon .cmb { overflow-wrap: anywhere; }
 .mapnote { font-size: 13px; color: var(--muted); margin: 0; }
 </style>
 </head>
@@ -115,6 +126,7 @@ async function boardView(code) {
       <button class="tb2" id="tmap" aria-pressed="false">🗺 전체 지도</button>
       <button class="tb2" id="tcsv">⬇ 결과 내려받기</button>
       <button class="tb2" id="tren">✏ 방 이름 바꾸기</button>
+      <button class="tb2" id="tchat" aria-pressed="true">💬 학생 채팅 켜짐</button>
       <button class="tb2 warn" id="treset">🧹 탐사방 비우기</button>
       <span class="sp"></span><span class="lock" id="tlock"></span>
       <button class="tb2 warn" id="texit">🔒 현황판 나가기</button>
@@ -129,11 +141,13 @@ async function boardView(code) {
       <div class="race"><div class="lanehead"><span>#</span><span>탐정</span><span class="tr">원정 진행 (미션 ${N}개)</span><span>탐사 점수 · 티어</span><span></span></div>
         <div id="lanes"><p class="empty" style="padding:10px 6px">아직 탑승한 탐정이 없어요. 방 코드를 알려 주세요!</p></div>
         <div class="legend"><span style="--c:#f3c35a">태양 이웃</span><span style="--c:#79d3e8">성단 구역</span><span style="--c:#ff7aa8">성운 지대</span><span style="--c:#b9a2ff">외부 은하</span></div></div>
-      <div class="side"><div class="crew"><h2>탐사 소식 <span class="live off" id="live">연결 중</span></h2><ul class="feed" id="feed"></ul></div>
+      <div class="side"><div class="crew chatmon"><h2>학생 채팅 <span class="muted" style="font-family:var(--f-body);font-size:12px" id="cmstat"></span></h2><div id="cmbody"></div></div>
+        <div class="crew"><h2>탐사 소식 <span class="live off" id="live">연결 중</span></h2><ul class="feed" id="feed"></ul></div>
         <div class="crew"><h2>선생님 도구 안내</h2><p class="muted" style="font-size:12.5px;margin:0">맨 위 도구 줄에서 전체 지도·결과 내려받기·방 이름 바꾸기·방 비우기·나가기를 할 수 있어요. 각 줄의 × 버튼으로 부적절한 닉네임을 내보낼 수 있어요.</p></div></div>
     </div>`;
   $('url').textContent = joinURL(code);
   bindTools(code);
+  chatMonitor(code);
   if (!title) { $('lanes').innerHTML = '<p class="err" style="padding:10px 6px">이 방 코드를 찾을 수 없어요. 코드를 확인하거나 새 탐사방을 만들어 주세요.</p>'; return; }
   let feed = [];
   window.__sub = SQNet.subscribe(code, null, {
@@ -153,19 +167,54 @@ async function needAdmin(code) {
     ov.hidden = false; $('apw').focus();
     $('ano').onclick = () => { ov.hidden = true; res(null); };
     const go = async () => { $('ago').disabled = true;
-      try { const r = await SQNet.claimAdmin(code, $('apw').value.trim()); if (r && r.ok) { try { localStorage.setItem('sq-admin-' + code, r.admin); } catch (e) {} ov.hidden = true; paintLock(code); res(r.admin); return; }
+      try { const r = await SQNet.claimAdmin(code, $('apw').value.trim()); if (r && r.ok) { try { localStorage.setItem('sq-admin-' + code, r.admin); } catch (e) {} ov.hidden = true; paintLock(code); if (window.__cm) window.__cm(code); res(r.admin); return; }
         $('aerr').textContent = r && r.reason === 'pass' ? '비밀번호가 맞지 않아요.' : '이 방의 관리 정보를 찾을 수 없어요.'; }
       catch (e) { $('aerr').textContent = '서버 연결이 불안정해요. 잠시 후 다시 시도해 주세요.'; }
       $('ago').disabled = false; };
     $('ago').onclick = go; $('apw').onkeydown = e => { if (e.key === 'Enter') go(); };
   });
 }
+// ---------- 학생 채팅 모니터 (선생님만: 팀 채팅까지 모두 보임 · 숨기기 · 채팅 금지) ----------
+let cmTimer = null, cmOn = true;
+function chatMonitor(code) {
+  clearTimeout(cmTimer);
+  const body = $('cmbody'); if (!body) return;
+  const admin = adminKey(code);
+  if (!admin) {
+    body.innerHTML = `<p class="muted" style="font-size:13px;margin:0 0 8px">팀끼리 나누는 비밀 채팅까지 선생님은 모두 볼 수 있어요. 욕설은 서버가 자동으로 막고, 3번 쓰면 3분 동안 채팅이 금지돼요.</p><button class="tb2" id="cmkey">🔑 채팅 보기 (비밀번호)</button>`;
+    $('cmkey').onclick = async () => { if (await needAdmin(code)) chatMonitor(code); }; return;
+  }
+  const tick = async () => {
+    try {
+      const r = await SQNet.chatFeed(code, admin, 0);
+      if (!r) { body.innerHTML = '<p class="err">관리 권한을 확인할 수 없어요.</p>'; return; }
+      cmOn = r.chat_on !== false; paintChatBtn();
+      const list = (r.chat || []).slice(-60), atEnd = !body.firstChild || !body.querySelector('.cml') || (() => { const l = body.querySelector('.cml'); return l.scrollHeight - l.scrollTop - l.clientHeight < 40; })();
+      const prevTop = body.querySelector('.cml') ? body.querySelector('.cml').scrollTop : 0;
+      $('cmstat').textContent = `${list.filter(m => !m.hidden).length}개 · ${cmOn ? '켜짐' : '꺼짐'}`;
+      body.innerHTML = list.length ? `<ul class="cml">${list.map(m => { const t = SQ.TEAMS[m.team || 0] || SQ.TEAMS[0], d = new Date(m.created_at);
+        return `<li class="${m.hidden ? 'hid' : ''}" style="--tc:${t.col}"><div class="cmh"><b>${esc(m.nickname)}</b> <span class="sc ${m.scope}">${m.scope === 'team' ? esc(t.nm) + ' 팀만' : '전체'}</span> <time>${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}</time>
+          <span class="cma">${m.hidden ? '<em>숨김</em>' : `<button data-h="${m.id}" title="모두에게서 숨기기">숨기기</button>`}${m.player_id ? (m.muted ? `<button data-u="${esc(m.player_id)}">🔈 금지 풀기</button>` : `<button data-m="${esc(m.player_id)}" title="5분 동안 채팅 금지">🔇 5분</button>`) : ''}</span></div><div class="cmb">${esc(m.body)}</div></li>`; }).join('')}</ul>`
+        : '<p class="muted" style="font-size:13px;margin:0">아직 채팅이 없어요. 학생 화면 오른쪽 아래 💬 버튼으로 채팅해요.</p>';
+      const l = body.querySelector('.cml'); if (l) l.scrollTop = atEnd ? l.scrollHeight : prevTop;
+      body.querySelectorAll('button[data-h]').forEach(b => b.onclick = async () => { b.disabled = true; await SQNet.chatHide(code, admin, +b.dataset.h).catch(() => {}); tick(); });
+      body.querySelectorAll('button[data-m]').forEach(b => b.onclick = async () => { b.disabled = true; await SQNet.mute(code, admin, b.dataset.m, 5).catch(() => {}); tick(); });
+      body.querySelectorAll('button[data-u]').forEach(b => b.onclick = async () => { b.disabled = true; await SQNet.mute(code, admin, b.dataset.u, 0).catch(() => {}); tick(); });
+    } catch (e) { $('cmstat').textContent = '연결 중…'; }
+    clearTimeout(cmTimer); cmTimer = setTimeout(tick, document.hidden ? 8000 : 3500);
+  };
+  tick();
+}
+window.__cm = c => chatMonitor(c);
+function paintChatBtn() { const b = $('tchat'); if (!b) return; b.textContent = cmOn ? '💬 학생 채팅 켜짐' : '🔕 학생 채팅 꺼짐'; b.setAttribute('aria-pressed', String(cmOn)); }
 function paintLock(code) { const l = $('tlock'); if (l) l.textContent = adminKey(code) ? '✓ 관리 권한 있음' : '관리 버튼은 비밀번호 확인 후 사용'; }
 function bindTools(code) {
   paintLock(code);
   $('texit').onclick = () => { if (window.__sub) window.__sub.stop(); try { sessionStorage.removeItem('sq-teacher'); } catch (e) {} location.href = 'board.html'; };
   $('tmap').onclick = () => { const s = $('mapsec'), on = s.hidden; s.hidden = !on; $('tmap').setAttribute('aria-pressed', String(on)); if (on) { drawMap(); s.scrollIntoView({ block: 'start', behavior: 'smooth' }); } };
   $('tcsv').onclick = () => downloadCSV(code);
+  $('tchat').onclick = async () => { const a = await needAdmin(code); if (!a) return; const want = !cmOn;
+    try { const ok = await SQNet.chatSet(code, a, want); if (ok !== false) { cmOn = want; paintChatBtn(); chatMonitor(code); } } catch (e) {} };
   $('tren').onclick = async () => { const a = await needAdmin(code); if (!a) return;
     card.innerHTML = `<h2 style="font-size:22px">탐사방 이름 바꾸기</h2><div class="field"><input id="rn" maxlength="40" value="${esc($('rtitle').textContent)}"></div><div class="err" id="rerr"></div><div class="row"><button class="go" id="rgo">저장</button><button class="ghost" id="rno">취소</button></div>`;
     ov.hidden = false; $('rn').select(); $('rno').onclick = () => ov.hidden = true;

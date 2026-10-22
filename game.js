@@ -570,12 +570,14 @@ function renderShips() {
 let crewSub = null, crewPlayers = [], feedEv = [];
 function connectCrew() {
   if (crewSub) { crewSub.stop(); crewSub = null; }
+  chatReset();
   if (!S.net) { $('crew').innerHTML = '<p class="empty">혼자 탐사 중이에요. 방 코드로 참가하면 친구들의 탐사 현황이 실시간으로 보여요.</p>'; $('feed').innerHTML = ''; $('live').className = 'live off'; $('live').textContent = 'SOLO'; return; }
   $('crew').innerHTML = '<p class="empty">현황을 불러오는 중…</p>';
   crewSub = SQNet.subscribe(S.net.code, S.net.id, {
     players: ps => { crewPlayers = ps; renderCrew(); renderShips(); paintScore(); },
     events: ev => { feedEv = feedEv.concat(ev).slice(-40); renderFeed(ev); },
     duels: ds => ds.slice().reverse().forEach(onDuel),
+    chat: onChat,
     status: ok => { $('live').className = 'live' + (ok ? '' : ' off'); $('live').textContent = ok ? 'LIVE' : '재연결 중'; },
   });
 }
@@ -605,12 +607,118 @@ function renderFeed(ev) {
       S.en += 2; save(); render(); SQAudio.sfx('measure'); toast(`🤝 팀원 ${e.nickname} 탐정이 에너지 2를 보내 줬어요!`);
     });
     if (seenEv !== null) ev.filter(e => e.id > seenEv && e.kind === 'legend' && e.player_id !== S.net.id).forEach(e => toast(`${e.nickname} 탐정: ${teamText(e.body)}`, 'legend'));
+    if (seenEv !== null) ev.filter(e => e.id > seenEv && KF_KINDS[e.kind]).slice(-4).forEach(killFeed);
     seenEv = Math.max(seenEv || 0, maxId);
   }
   $('feed').innerHTML = feedEv.slice(-8).reverse().map(e => `<li class="${e.kind}"><b>${esc(e.nickname)}</b> <span>${esc(teamText(e.body))}</span></li>`).join('');
 }
 
 
+
+// ---------- 킬피드: 공격·대결·선물·전설·아이템 성공을 하늘 위에 바로 알림 ----------
+const KF_KINDS = { attack: 'hit', duel: 'duel', gift: 'gift', legend: 'legend', item: 'item', quiz: 'quiz' };
+function killFeed(e) {
+  const box = $('kfeed'); if (!box) return;
+  const p = crewPlayers.find(x => x.id === e.player_id), col = tm(p ? p.team || 0 : 0).col, mine = S.net && e.player_id === S.net.id, hitMe = S.net && e.target === S.net.id;
+  const li = document.createElement('div');
+  li.className = 'kf ' + KF_KINDS[e.kind] + (mine ? ' mine' : '') + (hitMe ? ' me' : '');
+  li.style.setProperty('--tc', col);
+  li.innerHTML = `<b>${esc(e.nickname)}</b> <span>${esc(teamText(e.body))}</span>`;
+  box.prepend(li);
+  while (box.children.length > 4) box.lastChild.remove();
+  setTimeout(() => { li.classList.add('out'); setTimeout(() => li.remove(), 500); }, 6500);
+}
+
+// ---------- 채팅 (전체 · 우리 팀) ----------
+const CHAT_QUICK = ['🤝 에너지 보내줘!', '⚔ 같이 공격하자!', '🛡 도와줘!', '🔍 정답 어디야?', '👍 나이스!', '🔥 가자!', 'GG'];
+const CH = { all: [], team: [], tab: 'all', open: false, unread: { all: 0, team: 0 }, on: true, muted: null, first: true, ids: new Set(), sending: false };
+function chatReset() {
+  CH.all = []; CH.team = []; CH.unread = { all: 0, team: 0 }; CH.first = true; CH.ids.clear(); CH.on = true; CH.muted = null;
+  const dock = $('chatdock'); if (!dock) return;
+  dock.hidden = !S.net; if (!S.net) chatOpen(false);
+  chatPaint();
+}
+function chatOpen(v) {
+  CH.open = v; $('chatbox').hidden = !v; $('chatbtn').setAttribute('aria-expanded', v);
+  if (v) { CH.unread[CH.tab] = 0; chatPaint(); setTimeout(() => { const l = $('chatlist'); l.scrollTop = l.scrollHeight; if (matchMedia('(pointer:fine)').matches) $('chatin').focus(); }, 30); }
+  else chatPaint();
+}
+function onChat(list, st) {
+  CH.on = st.on; CH.muted = st.muted && new Date(st.muted) > new Date() ? new Date(st.muted) : null;
+  let got = false;
+  list.forEach(m => {
+    if (CH.ids.has(m.id)) return; CH.ids.add(m.id); got = true;
+    const arr = CH[m.scope === 'team' ? 'team' : 'all']; arr.push(m); if (arr.length > 60) arr.shift();
+    const mine = S.net && m.player_id === S.net.id;
+    if (CH.first || Date.now() - new Date(m.created_at) > 30000) return;
+    Sky.say(m.player_id, m.body);
+    if (!mine) {
+      const tab = m.scope === 'team' ? 'team' : 'all';
+      if (!CH.open || CH.tab !== tab) CH.unread[tab]++;
+      if (!CH.open) chatPeek(m);
+      SQAudio.sfx('pick');
+    }
+  });
+  CH.first = false;
+  if (got || true) chatPaint();
+}
+let chatPeekT = null;
+function chatPeek(m) {
+  const el = $('chatpeek'); if (!el) return;
+  el.innerHTML = `${m.scope === 'team' ? '<em>팀</em>' : ''}<b style="color:${tm(m.team || 0).col}">${esc(m.nickname)}</b> ${esc(m.body)}`;
+  el.hidden = false; el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+  clearTimeout(chatPeekT); chatPeekT = setTimeout(() => { el.hidden = true; }, 4500);
+}
+function chatTime(t) { const d = new Date(t); return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; }
+function chatPaint() {
+  const dock = $('chatdock'); if (!dock || dock.hidden) return;
+  const n = CH.unread.all + CH.unread.team, badge = $('chatbadge');
+  badge.textContent = n > 9 ? '9+' : n; badge.hidden = !n;
+  if (!CH.open) return;
+  const myTeam = S.net ? S.net.team || 0 : 0, t = tm(myTeam);
+  $('chattabs').innerHTML = `<button data-t="all" aria-pressed="${CH.tab === 'all'}">전체${CH.unread.all && CH.tab !== 'all' ? ` <i>${CH.unread.all}</i>` : ''}</button>
+    <button data-t="team" aria-pressed="${CH.tab === 'team'}" style="--tc:${t.col}">${shipIcon(t.col, 14)} 우리 팀${CH.unread.team && CH.tab !== 'team' ? ` <i>${CH.unread.team}</i>` : ''}</button>`;
+  $('chattabs').querySelectorAll('button').forEach(b => b.onclick = () => { CH.tab = b.dataset.t; CH.unread[CH.tab] = 0; chatPaint(); const l = $('chatlist'); l.scrollTop = l.scrollHeight; });
+  const l = $('chatlist'), atEnd = l.scrollHeight - l.scrollTop - l.clientHeight < 40, arr = CH[CH.tab];
+  l.innerHTML = arr.length ? arr.map(m => { const me = S.net && m.player_id === S.net.id;
+    return `<li class="${me ? 'me' : ''}" style="--tc:${tm(m.team || 0).col}"><button class="cn" data-p="${esc(m.player_id || '')}" ${me ? 'disabled' : ''}>${shipIcon(tm(m.team || 0).col, 13)}${esc(m.nickname)}</button><span class="cb">${esc(m.body)}</span><time>${chatTime(m.created_at)}</time></li>`; }).join('')
+    : `<li class="empty">${CH.tab === 'team' ? '우리 팀만 보는 작전 채팅이에요. 다른 팀은 못 봐요 🤫' : '방 전체 친구들과 이야기해요. 고운 말만! 💬'}</li>`;
+  l.querySelectorAll('button.cn').forEach(b => b.onclick = () => { if (b.dataset.p) { chatOpen(false); openShip(b.dataset.p); } });
+  if (atEnd) l.scrollTop = l.scrollHeight;
+  const inp = $('chatin'), off = !CH.on, mu = CH.muted && CH.muted > new Date();
+  inp.disabled = off || mu; $('chatsend').disabled = off || mu;
+  $('chatquick').querySelectorAll('button').forEach(b => b.disabled = off || mu);
+  inp.placeholder = off ? '선생님이 채팅을 잠시 껐어요' : mu ? `채팅 금지 중 · ${Math.ceil((CH.muted - new Date()) / 1000)}초 남음` : CH.tab === 'team' ? '우리 팀에게 작전 보내기…' : '모두에게 말하기… (60자)';
+}
+function chatNote(msg, bad) { const el = $('chatnote'); el.textContent = msg; el.className = 'cnote' + (bad ? ' bad' : ''); el.hidden = !msg; clearTimeout(el._t); if (msg) el._t = setTimeout(() => { el.hidden = true; }, 5000); }
+async function chatSend(body) {
+  body = (body || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+  if (!body || !S.net || CH.sending) return;
+  CH.sending = true; $('chatsend').disabled = true;
+  let r; try { r = await SQNet.chatSend(S.net, CH.tab, body); } catch (e) { r = { ok: false, reason: 'net' }; }
+  CH.sending = false; $('chatsend').disabled = false;
+  if (r && r.ok) { $('chatin').value = ''; $('chatcnt').textContent = '0/60'; chatNote(''); Sky.say(S.net.id, body); if (crewSub) { crewSub.fast(20000); crewSub.now(); } return; }
+  const why = r && r.reason;
+  if (why === 'bad') { SQAudio.sfx('wrong'); if (r.muted) { CH.muted = new Date(Date.now() + (r.wait || 180) * 1000); chatNote('🚫 고운 말을 쓰지 않아 3분 동안 채팅이 금지됐어요.', true); } else chatNote(`🚫 그 말은 보낼 수 없어요. 고운 말로 바꿔 주세요! (${r.left}번 더 쓰면 3분 채팅 금지)`, true); }
+  else if (why === 'fast') chatNote('⏳ 너무 빨라요! 잠깐 쉬었다가 보내 주세요.', true);
+  else if (why === 'muted') { CH.muted = new Date(Date.now() + (r.wait || 60) * 1000); chatNote(`🔇 채팅 금지 중이에요 (${r.wait}초 남음)`, true); }
+  else if (why === 'off') { CH.on = false; chatNote('선생님이 채팅을 잠시 껐어요.', true); }
+  else chatNote('연결이 불안정해요. 잠시 후 다시 보내 주세요.', true);
+  chatPaint();
+}
+function bindChat() {
+  if (!$('chatdock')) return;
+  $('chatbtn').onclick = () => chatOpen(!CH.open);
+  $('chatx').onclick = () => chatOpen(false);
+  $('chatpeek').onclick = () => { $('chatpeek').hidden = true; chatOpen(true); };
+  $('chatquick').innerHTML = CHAT_QUICK.map(q => `<button type="button">${esc(q)}</button>`).join('');
+  $('chatquick').querySelectorAll('button').forEach(b => b.onclick = () => chatSend(b.textContent));
+  const inp = $('chatin');
+  inp.oninput = () => { $('chatcnt').textContent = `${inp.value.length}/60`; };
+  $('chatform').onsubmit = ev => { ev.preventDefault(); chatSend(inp.value); };
+  inp.addEventListener('keydown', ev => ev.stopPropagation()); // 입력 중 게임 단축키 막기
+  setInterval(() => { if (CH.open && CH.muted) { if (CH.muted <= new Date()) CH.muted = null; chatPaint(); } }, 1000);
+}
 
 // ---------- 탐사 점수 · 티어 ----------
 const REWARD_P = { '성단': 300, '성운': 300, '은하': 500 };
@@ -692,6 +800,8 @@ async function useItem(i) {
     Sky.radar(ids, 6); toast('📡 레이더 작동! 6초 동안 표시돼요');
   }
   SQAudio.sfx('measure'); S.items.splice(i, 1); save(); render(); renderItems();
+  const IT_SAY = { energy: '⚡ 에너지 충전 아이템 사용! 관측 에너지 +4', boost: '✖2 점수 2배 아이템 발동! 60초 동안 점수 2배', shield: '🛡 보호막 아이템 발동! 90초 동안 공격 무적', radar: '📡 레이더 아이템 발동! 정답 위치 탐지 중' };
+  sync('item', IT_SAY[it]);
 }
 
 // ---------- 별 합계 (미션으로 모은 별 + 공격·대결로 얻고 잃은 별) ----------
@@ -1014,7 +1124,7 @@ try { if (localStorage.getItem('sq-mini') === '0') { $('mini').hidden = true; $(
 Sky.attachMinimap($('mini'));
 
 window.SQGame = { openShip, onDuel: d => onDuel(d), spawnEventStar, startTut: () => startTut(TUT_BASIC, null), endTut: () => endTut(true) };
-renderItems(); scheduleEventStar(true);
+renderItems(); scheduleEventStar(true); bindChat();
 // ---------- boot ----------
 if (S.phase === 'play') SQAudio.setMode(1);
 render();

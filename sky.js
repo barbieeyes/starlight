@@ -340,6 +340,22 @@ function drawShips(t, dt) {
       ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(5,10,23,0.8)'; ctx.strokeText(label, x, y); ctx.fillStyle = sh.me ? '#ffffff' : `rgba(${col},0.95)`; ctx.fillText(label, x, y);
     }
   });
+  // 채팅 말풍선 (5초)
+  const now = performance.now();
+  ships.forEach(sh => {
+    if (!sh.say || sh.lx == null) return;
+    const a = (now - sh.sayAt) / 1000; if (a > 5.5) { sh.say = null; return; }
+    const al = Math.min(1, a * 6, (5.5 - a) * 2), x = sh.lx, y = sh.ly - 16 - (a < 0.18 ? (0.18 - a) * 40 : 0);
+    ctx.font = '600 12px "IBM Plex Sans KR", "Malgun Gothic", sans-serif';
+    const w = Math.min(190, ctx.measureText(sh.say).width + 16), h = 22, bx = Math.max(4, Math.min(cw - w - 4, x - w / 2)), by = y - h;
+    ctx.globalAlpha = al;
+    ctx.fillStyle = 'rgba(240,244,252,0.96)'; ctx.strokeStyle = `rgb(${sh.col})`; ctx.lineWidth = 2;
+    ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(bx, by, w, h, 9); else ctx.rect(bx, by, w, h); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x - 5, by + h - 1); ctx.lineTo(x, by + h + 6); ctx.lineTo(x + 5, by + h - 1); ctx.closePath(); ctx.fillStyle = 'rgba(240,244,252,0.96)'; ctx.fill();
+    ctx.fillStyle = '#0b1426'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.save(); ctx.beginPath(); ctx.rect(bx + 6, by, w - 12, h); ctx.clip(); ctx.fillText(sh.say, bx + 8, by + h / 2 + 1); ctx.restore();
+    ctx.globalAlpha = 1;
+  });
 }
 
 // ---------- 전체 지도 (미니맵): 하늘 전체 · 지금 보는 곳(네모) · 나와 친구들 위치 ----------
@@ -558,6 +574,7 @@ return {
   takeEvent(id) { const e = evs.get(id); evs.delete(id); return e; },
   floatText(x, y, text, col) { floats.push({ x, y, text, col: col || '#f3c35a', age: 0 }); if (floats.length > 12) floats.shift(); },
   radar(ids, secs) { radarMarks.ids = ids; radarMarks.until = performance.now() + secs * 1000; },
+  say(id, text) { const sh = ships.get(id); if (!sh) return false; sh.say = text.length > 22 ? text.slice(0, 21) + '…' : text; sh.sayAt = performance.now(); return true; },
   setShips(list) {
     const keep = new Set();
     list.forEach((p, i) => {

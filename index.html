@@ -40,6 +40,7 @@
       <div class="hud"><div class="mission" id="hud"></div></div>
       <div class="banner" id="banner" aria-hidden="true"><i class="lb t"></i><i class="lb b"></i><div class="bt"><small id="bsub"></small><b id="btitle"></b></div></div>
       <div class="farcrew" id="farcrew" hidden></div>
+      <div class="kfeed" id="kfeed" aria-live="polite"></div>
       <div class="items" id="items" aria-label="아이템 가방"></div>
       <canvas class="minimap" id="mini" aria-label="전체 지도. 누르면 그곳으로 이동"></canvas>
       <div class="zoombar">
@@ -70,6 +71,17 @@
 
 <div class="ov" id="ov" hidden><div class="card" id="card"></div></div>
 <div class="ov ov2" id="ov2" hidden><div class="card" id="card2"></div></div>
+<div class="chatdock" id="chatdock" hidden>
+  <div class="chatpeek" id="chatpeek" hidden></div>
+  <section class="chatbox" id="chatbox" hidden aria-label="채팅">
+    <header><div class="ctabs" id="chattabs"></div><button class="cx" id="chatx" aria-label="채팅 닫기">×</button></header>
+    <ul class="clist" id="chatlist"></ul>
+    <p class="cnote" id="chatnote" hidden></p>
+    <div class="cquick" id="chatquick"></div>
+    <form class="cform" id="chatform" autocomplete="off"><input id="chatin" maxlength="60" enterkeyhint="send" aria-label="채팅 입력"><span class="ccnt" id="chatcnt">0/60</span><button id="chatsend" type="submit">보내기</button></form>
+  </section>
+  <button class="chatbtn" id="chatbtn" aria-expanded="false" aria-label="채팅 열기">💬<span class="tx">채팅</span><i id="chatbadge" hidden>0</i></button>
+</div>
 <div class="flash" id="flash" aria-hidden="true"></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
