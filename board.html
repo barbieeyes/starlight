@@ -52,6 +52,21 @@
 .side .crew { padding: 12px 14px; }
 .side .feed { max-height: 460px; border-top: 0; margin: 0; padding: 0; font-size: 13.5px; gap: 6px; }
 .admin { display: flex; gap: 8px; flex-wrap: wrap; }
+/* 10/22: 늘 보이는 선생님 도구 줄 · 전체 지도 */
+.tbar { position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 10px; background: rgba(5,10,23,.92); backdrop-filter: blur(6px); border: 1px solid var(--line); border-radius: 12px; }
+.tbar .tb2 { background: var(--panel-2); border: 1px solid var(--line); border-radius: 9px; padding: 8px 12px; font-size: 14px; font-weight: 600; color: var(--text); white-space: nowrap; }
+.tbar .tb2:hover { border-color: var(--cyan); }
+.tbar .tb2[aria-pressed="true"] { border-color: var(--amber); color: var(--amber); }
+.tbar .tb2.warn:hover { border-color: var(--bad); color: var(--bad); }
+.tbar .sp { flex: 1; }
+.tbar .lock { font-size: 12px; color: var(--muted); }
+.mapsec { scroll-margin-top: 70px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 10px; }
+.mapgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 900px) { .mapgrid { grid-template-columns: 1fr; } }
+.mapbox { position: relative; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #050a17; }
+.mapbox h3 { position: absolute; left: 10px; top: 8px; margin: 0; font-size: 14px; color: var(--amber); z-index: 1; text-shadow: 0 1px 4px #000; }
+.mapbox canvas { display: block; width: 100%; aspect-ratio: 5 / 3; }
+.mapnote { font-size: 13px; color: var(--muted); margin: 0; }
 </style>
 </head>
 <body>
@@ -91,13 +106,23 @@ function createView() {
 }
 
 let players = [], prevMission = new Map();
+addEventListener('resize', () => drawMap());
 async function boardView(code) {
   const title = await SQNet.roomTitle(code);
   const admin = adminKey(code);
   app.innerHTML = `
-    <div class="bhead"><div><div class="eyebrow">SONGRYE STARLIGHT BATTLE · 실시간 현황판</div><h1>${esc(title || '탐사방 ' + code)}</h1></div>
+    <div class="tbar" role="toolbar" aria-label="선생님 도구">
+      <button class="tb2" id="tmap" aria-pressed="false">🗺 전체 지도</button>
+      <button class="tb2" id="tcsv">⬇ 결과 내려받기</button>
+      <button class="tb2" id="tren">✏ 방 이름 바꾸기</button>
+      <button class="tb2 warn" id="treset">🧹 탐사방 비우기</button>
+      <span class="sp"></span><span class="lock" id="tlock"></span>
+      <button class="tb2 warn" id="texit">🔒 현황판 나가기</button>
+    </div>
+    <div class="bhead"><div><div class="eyebrow">SONGRYE STARLIGHT BATTLE · 실시간 현황판</div><h1 id="rtitle">${esc(title || '탐사방 ' + code)}</h1></div>
       <div class="joinbox"><div><div class="muted" style="font-size:12px">방 코드</div><div class="bigcode">${esc(code)}</div></div>
       <div class="how">게임 주소에서 방 코드 · 이름 · 팀 우주선 선택<br><b id="url"></b></div></div></div>
+    <section class="mapsec" id="mapsec" hidden><div class="mapgrid" id="mapgrid"></div><p class="mapnote">학생 우주선은 지금 망원경을 맞춘 천체 둘레에 표시돼요 (괄호 안 숫자 = 그 천체를 보는 학생 수). 아직 아무것도 고르지 않은 학생은 아래쪽 출발 지점에 있어요. 점 색 = 팀 색 · 3명 이하일 때 이름 표시.</p></section>
     <div class="teamboard" id="teamboard"></div>
     <div class="stats" id="stats"></div>
     <div class="bmain">
@@ -105,17 +130,90 @@ async function boardView(code) {
         <div id="lanes"><p class="empty" style="padding:10px 6px">아직 탑승한 탐정이 없어요. 방 코드를 알려 주세요!</p></div>
         <div class="legend"><span style="--c:#f3c35a">태양 이웃</span><span style="--c:#79d3e8">성단 구역</span><span style="--c:#ff7aa8">성운 지대</span><span style="--c:#b9a2ff">외부 은하</span></div></div>
       <div class="side"><div class="crew"><h2>탐사 소식 <span class="live off" id="live">연결 중</span></h2><ul class="feed" id="feed"></ul></div>
-        ${admin ? `<div class="crew"><h2>선생님 도구</h2><div class="admin"><button class="ghost" id="reset">탐사방 비우기</button></div><p class="muted" style="font-size:12.5px;margin:8px 0 0">각 줄의 × 버튼으로 부적절한 닉네임을 내보낼 수 있어요.</p></div>` : ''}</div>
+        <div class="crew"><h2>선생님 도구 안내</h2><p class="muted" style="font-size:12.5px;margin:0">맨 위 도구 줄에서 전체 지도·결과 내려받기·방 이름 바꾸기·방 비우기·나가기를 할 수 있어요. 각 줄의 × 버튼으로 부적절한 닉네임을 내보낼 수 있어요.</p></div></div>
     </div>`;
   $('url').textContent = joinURL(code);
+  bindTools(code);
   if (!title) { $('lanes').innerHTML = '<p class="err" style="padding:10px 6px">이 방 코드를 찾을 수 없어요. 코드를 확인하거나 새 탐사방을 만들어 주세요.</p>'; return; }
-  if (admin) $('reset').onclick = () => confirmBox('탐사방을 비울까요?', '모든 학생의 진행 기록과 소식이 지워져요. 방 코드는 그대로 쓸 수 있어요.', async () => { await SQNet.resetRoom(code, admin); });
   let feed = [];
   window.__sub = SQNet.subscribe(code, null, {
     players: ps => { players = ps; renderLanes(code, admin); },
     events: ev => { feed = feed.concat(ev).slice(-40); $('feed').innerHTML = feed.slice().reverse().map(e => `<li class="${esc(e.kind)}"><b>${esc(e.nickname)}</b> <span>${esc(SQ.teamText(e.body))}</span></li>`).join(''); },
     status: ok => { $('live').className = 'live' + (ok ? '' : ' off'); $('live').textContent = ok ? 'LIVE' : '재연결 중'; },
   });
+}
+// ---------- 선생님 도구 줄 ----------
+// 관리 권한(방을 만든 컴퓨터에 저장된 열쇠)이 없으면 선생님 비밀번호로 서버에서 받아 옴 → 어느 컴퓨터에서든 관리 가능
+async function needAdmin(code) {
+  const have = adminKey(code); if (have) return have;
+  return new Promise(res => {
+    card.innerHTML = `<div class="eyebrow">관리 권한</div><h2 style="font-size:22px">선생님 비밀번호를 한 번 더 입력해 주세요</h2><p class="muted">이 컴퓨터에서 만든 방이 아니라서 관리 권한을 서버에서 받아 와야 해요.</p>
+      <div class="field"><input id="apw" type="password" inputmode="numeric" aria-label="선생님 비밀번호"></div><div class="err" id="aerr"></div>
+      <div class="row"><button class="go" id="ago">확인</button><button class="ghost" id="ano">취소</button></div>`;
+    ov.hidden = false; $('apw').focus();
+    $('ano').onclick = () => { ov.hidden = true; res(null); };
+    const go = async () => { $('ago').disabled = true;
+      try { const r = await SQNet.claimAdmin(code, $('apw').value.trim()); if (r && r.ok) { try { localStorage.setItem('sq-admin-' + code, r.admin); } catch (e) {} ov.hidden = true; paintLock(code); res(r.admin); return; }
+        $('aerr').textContent = r && r.reason === 'pass' ? '비밀번호가 맞지 않아요.' : '이 방의 관리 정보를 찾을 수 없어요.'; }
+      catch (e) { $('aerr').textContent = '서버 연결이 불안정해요. 잠시 후 다시 시도해 주세요.'; }
+      $('ago').disabled = false; };
+    $('ago').onclick = go; $('apw').onkeydown = e => { if (e.key === 'Enter') go(); };
+  });
+}
+function paintLock(code) { const l = $('tlock'); if (l) l.textContent = adminKey(code) ? '✓ 관리 권한 있음' : '관리 버튼은 비밀번호 확인 후 사용'; }
+function bindTools(code) {
+  paintLock(code);
+  $('texit').onclick = () => { if (window.__sub) window.__sub.stop(); try { sessionStorage.removeItem('sq-teacher'); } catch (e) {} location.href = 'board.html'; };
+  $('tmap').onclick = () => { const s = $('mapsec'), on = s.hidden; s.hidden = !on; $('tmap').setAttribute('aria-pressed', String(on)); if (on) { drawMap(); s.scrollIntoView({ block: 'start', behavior: 'smooth' }); } };
+  $('tcsv').onclick = () => downloadCSV(code);
+  $('tren').onclick = async () => { const a = await needAdmin(code); if (!a) return;
+    card.innerHTML = `<h2 style="font-size:22px">탐사방 이름 바꾸기</h2><div class="field"><input id="rn" maxlength="40" value="${esc($('rtitle').textContent)}"></div><div class="err" id="rerr"></div><div class="row"><button class="go" id="rgo">저장</button><button class="ghost" id="rno">취소</button></div>`;
+    ov.hidden = false; $('rn').select(); $('rno').onclick = () => ov.hidden = true;
+    $('rgo').onclick = async () => { try { const ok = await SQNet.renameRoom(code, a, $('rn').value); if (ok) { $('rtitle').textContent = $('rn').value.trim() || $('rtitle').textContent; ov.hidden = true; } else $('rerr').textContent = '바꾸지 못했어요. 관리 권한을 확인해 주세요.'; } catch (e) { $('rerr').textContent = '서버 연결이 불안정해요.'; } }; };
+  $('treset').onclick = async () => { const a = await needAdmin(code); if (!a) return; confirmBox('탐사방을 비울까요?', '모든 학생의 진행 기록과 소식이 현황판에서 지워져요. 방 코드는 그대로 쓸 수 있어요. (결과가 필요하면 먼저 ⬇ 결과 내려받기!)', async () => { await SQNet.resetRoom(code, a); }); };
+}
+function downloadCSV(code) {
+  const tot = p => Math.max(0, p.stars + (p.delta || 0));
+  const list = [...players].sort((a, b) => (b.points || 0) - (a.points || 0));
+  const rows = [['순위', '이름', '팀', '진행 미션', '완주', '탐사 점수', '티어', '별', '성단', '성운', '은하', '소행성 충돌']]
+    .concat(list.map((p, i) => [i + 1, p.nickname, (SQ.TEAMS[p.team || 0] || SQ.TEAMS[0]).nm + ' 팀', `${p.mission}/${N}`, p.finished ? 'O' : '', p.points || 0, TIERS[tierOf(p.points || 0)][0], tot(p), p.clusters, p.nebulae, p.galaxies, p.hits]));
+  const csv = '\ufeff' + rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = `탐사결과_${code}_${new Date().toISOString().slice(0, 10)}.csv`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+// ---------- 전체 지도: 구역 4개에 학생 우주선 위치 표시 ----------
+function hashOf(id) { return ([...String(id)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 9973, 7) % 1000) / 1000; }
+function drawMap() {
+  const box = $('mapgrid'); if (!box || $('mapsec').hidden) return;
+  if (!box.children.length) box.innerHTML = SQ.SECTORS.map((sec, i) => `<div class="mapbox"><h3 id="mh${i}"></h3><canvas id="mc${i}"></canvas></div>`).join('');
+  const W = 2000, H = 1200;
+  SQ.SECTORS.forEach((sec, si) => {
+    const cv = $('mc' + si), g = cv.getContext('2d'), d = Math.min(2, devicePixelRatio || 1), w = cv.clientWidth, h = cv.clientHeight;
+    if (cv.width !== Math.round(w * d)) { cv.width = Math.round(w * d); cv.height = Math.round(h * d); }
+    g.setTransform(d, 0, 0, d, 0, 0); const k = w / W;
+    g.fillStyle = si === 3 ? '#03040c' : '#060b1a'; g.fillRect(0, 0, w, h);
+    const here = players.filter(p => (p.sector || 0) === si && !p.finished);
+    $('mh' + si).textContent = `${si + 1}. ${sec.nm} · ${here.length}명`;
+    g.font = '500 11px "IBM Plex Sans KR", "Malgun Gothic", sans-serif'; g.textAlign = 'center';
+    sec.objs.forEach(o => { if (o.kind === 'field') return;
+      const n = here.filter(p => p.aim === o.id).length, r = o.kind === 'star' ? 3 : Math.max(5, o.size * k * 0.5);
+      g.fillStyle = o.kind === 'star' ? 'rgba(255,240,200,.9)' : 'rgba(185,170,255,.45)'; g.beginPath(); g.arc(o.x * k, o.y * k, r, 0, 6.283); g.fill();
+      g.fillStyle = n ? '#f3c35a' : 'rgba(170,184,214,.75)'; g.fillText(o.nm + (n ? ` (${n})` : ''), o.x * k, o.y * k + r + 12); });
+    // 같은 천체를 보는 학생들은 고리 모양으로 고르게 펼치고, 3명 이하일 때만 이름을 씀 (겹침 방지)
+    const groups = {}; here.forEach(p => { const o = sec.objs.find(v => v.id === p.aim); const key = o && o.kind !== 'field' ? o.id : '_start'; (groups[key] = groups[key] || []).push(p); });
+    Object.entries(groups).forEach(([key, ps]) => { const o = sec.objs.find(v => v.id === key), n = ps.length;
+      ps.sort((a, b) => (a.team || 0) - (b.team || 0)).forEach((p, i) => {
+        let x, y;
+        if (o) { const a = -Math.PI / 2 + i / n * 6.283, R = (o.kind === 'star' ? 30 : o.size * 0.7) + (n > 10 ? (i % 2) * 18 : 0); x = o.x + Math.cos(a) * R; y = o.y + Math.sin(a) * R * 0.8; }
+        else { x = 640 + (i % 12) * 60; y = H - 220 + Math.floor(i / 12) * 50; }
+        const col = (SQ.TEAMS[p.team || 0] || SQ.TEAMS[0]).col;
+        g.fillStyle = col; g.beginPath(); g.arc(x * k, y * k, 4.5, 0, 6.283); g.fill(); g.strokeStyle = '#050a17'; g.lineWidth = 1.5; g.stroke();
+        if (n <= 3) { g.fillStyle = col; g.font = '600 10px "IBM Plex Sans KR", "Malgun Gothic", sans-serif'; g.fillText(p.nickname, x * k, y * k - 8); }
+      });
+      if (!o && n) { g.fillStyle = 'rgba(170,184,214,.8)'; g.font = '500 11px "IBM Plex Sans KR", "Malgun Gothic", sans-serif'; g.fillText(`출발 지점 (${n})`, 640 * k + 330 * k, (H - 250) * k); } });
+  });
+  const fin = players.filter(p => p.finished).length;
+  if (fin) $('mh3').textContent += ` · 원정 완료 ${fin}명`;
 }
 function renderLanes(code, admin) {
   const tot = p => Math.max(0, p.stars + (p.delta || 0));
@@ -127,19 +225,20 @@ function renderLanes(code, admin) {
   const tl = T.filter(x => x.n).sort((a, b) => b.p - a.p), top = tl.length ? tl[0].p || 1 : 1;
   $('teamboard').innerHTML = tl.length ? tl.map((x, k) => `<div class="tb ${k === 0 ? 'lead' : ''}" style="--tc:${x.t.col}"><div class="tk">${k + 1}</div><div class="tt"><b class="tnm">${SQ.shipIcon(x.t.col, 22)}${SQ.teamName(x.i)}</b><span>${x.n}명${x.f ? ` · 완주 ${x.f}` : ''}</span><div class="tbar"><i style="width:${x.p / top * 100}%"></i></div></div><div class="tpp">${x.p.toLocaleString()}<small>P</small></div></div>`).join('') : '';
   if (!list.length) { $('lanes').innerHTML = '<p class="empty" style="padding:10px 6px">아직 탑승한 탐정이 없어요. 방 코드를 알려 주세요!</p>'; return; }
+  drawMap();
   $('lanes').innerHTML = list.map((p, i) => {
     const flash = prevMission.has(p.id) && prevMission.get(p.id) !== p.mission;
     const cells = Array.from({ length: N }, (_, k) => `<i class="${k < p.mission ? 's' + SECT[k] : ''} ${k === p.mission && !p.finished ? 'cur' : ''}"></i>`).join('');
     return `<div class="lane ${flash ? 'flash' : ''}"><span class="pos">${i + 1}</span><span class="nm">${SQ.shipIcon((SQ.TEAMS[p.team || 0] || SQ.TEAMS[0]).col, 16)}${esc(p.nickname)}${p.finished ? ' 🏁' : ''}</span>
       <div class="track" title="${p.mission}/${N}">${cells}</div>
       <span class="got"><b class="pp">${(p.points || 0).toLocaleString()}P</b> <span class="tier t${tierOf(p.points || 0)}">${TIERS[tierOf(p.points || 0)][0]}</span><br>★${tot(p)} · ${p.clusters}·${p.nebulae}·${p.galaxies}${p.hits ? ` · ☄${p.hits}` : ''}</span>
-      ${admin ? `<button class="x" data-id="${p.id}" aria-label="${esc(p.nickname)} 내보내기">×</button>` : '<span></span>'}</div>`;
+      <button class="x" data-id="${p.id}" aria-label="${esc(p.nickname)} 내보내기">×</button></div>`;
   }).join('');
   prevMission = new Map(list.map(p => [p.id, p.mission]));
   setTimeout(() => document.querySelectorAll('.lane.flash').forEach(el => el.classList.remove('flash')), 1200);
-  if (admin) document.querySelectorAll('.lane .x').forEach(b => b.onclick = () => {
-    const p = players.find(x => x.id === b.dataset.id);
-    confirmBox(`${p.nickname} 탐정을 내보낼까요?`, '이 학생의 진행 기록이 현황판에서 지워져요.', () => SQNet.removePlayer(code, admin, p.id));
+  document.querySelectorAll('.lane .x').forEach(b => b.onclick = async () => {
+    const p = players.find(x => x.id === b.dataset.id), a = await needAdmin(code); if (!a) return;
+    confirmBox(`${p.nickname} 탐정을 내보낼까요?`, '이 학생의 진행 기록이 현황판에서 지워져요.', () => SQNet.removePlayer(code, a, p.id));
   });
 }
 function confirmBox(title, text, fn) {

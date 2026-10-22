@@ -232,6 +232,14 @@ function starReadouts(s, o) {
       </svg>
       <div class="note big">${dir === 'far' ? '10 pc로 가져오니 <b>더 밝아져요</b> → 이 별은 10 pc보다 <b>멀리</b> 있어요.' : dir === 'near' ? '10 pc로 보내니 <b>더 어두워져요</b> → 이 별은 10 pc보다 <b>가까이</b> 있어요.' : '밝기가 <b>그대로</b>예요 → 이 별은 이미 <b>10 pc</b>에 있어요.'}</div></div>`;
   }
+  if (o.mag && o.abs) {
+    const X = v => 70 + (Math.max(-6, Math.min(8, v)) + 6) / 14 * 280, bar = (y, v, c, lb) => `<text x="8" y="${y + 13}" font-size="13" fill="#c9d2e6" ${T}>${lb}</text><rect x="70" y="${y}" width="${Math.max(4, 350 - X(v))}" height="18" rx="4" fill="${c}" transform="translate(${X(v) - 70} 0)"/><text x="${X(v) - 6}" y="${y + 14}" font-size="13" fill="#fff" text-anchor="end" font-weight="700" ${T}>${fmt(v)}</text>`;
+    h += `<div class="ro big"><div class="k"><span class="ric">⚖️</span>두 등급 나란히 비교 (막대가 길수록 밝아요)</div>
+      <svg viewBox="0 0 380 84" role="img" aria-label="겉보기 ${fmt(s.m)}등급, 절대 ${fmt(s.M)}등급">
+        ${bar(10, s.m, '#7c86a8', '겉보기')}${bar(44, s.M, '#f3c35a', '절대')}
+      </svg>
+      <div class="note big">${s.M < s.m ? '절대 등급 숫자가 더 작아요 → <b>진짜로는 보이는 것보다 더 밝은 별</b>, 멀리 있어서 어둡게 보였던 거예요.' : s.M > s.m ? '절대 등급 숫자가 더 커요 → 가까이 있어서 <b>실제보다 밝게 보이는 별</b>이에요.' : '두 등급이 같아요 → 딱 10 pc에 있는 별이에요.'}</div></div>`;
+  }
   return h || '<p class="empty">↑ 위의 관측 장비 버튼을 눌러 이 천체를 측정해 보세요. <b style="color:var(--amber)">추천</b> 표시가 있는 장비부터 써 보면 좋아요.</p>';
 }
 
@@ -275,18 +283,23 @@ function showJoin() {
       <div class="field fcode"><label for="jcode">방 코드 (4자리)</label><input class="code" id="jcode" inputmode="numeric" maxlength="4" autocomplete="off" value="${preset}"></div>
       <div class="field fnick"><label for="jnick">내 이름 · 우주선 위에 표시돼요</label><input id="jnick" maxlength="12" autocomplete="off" placeholder="예: 3반 이정연"></div>
     </div>
-    <div class="field"><label id="tlbl">우리 팀 우주선 고르기 · 같은 팀끼리는 공격할 수 없고, 점수가 합쳐져요</label>
+    <div class="field"><label id="tlbl">우리 팀 우주선 고르기 · 같은 팀끼리는 공격할 수 없고, 점수가 합쳐져요 <button type="button" class="linkbtn" id="autot">🎲 자동 배정</button></label>
       <div class="teams" id="teams" role="radiogroup" aria-labelledby="tlbl"></div>
       <div class="palette" id="palette" hidden><div class="pl">새 팀 색 고르기</div><div class="pcols" id="pcols"></div></div></div>
     <div class="err" id="jerr" role="alert"></div>
     <div class="row"><button class="go" id="jgo">탐사선 탑승</button><button class="ghost" id="jsolo">혼자 탐사하기</button></div>
     <p class="muted" style="font-size:13px">선생님이신가요? <a href="board.html" style="color:var(--cyan)">선생님 현황판 (비밀번호 필요)</a></p>`);
   if (preset) $('jnick').focus();
-  let team = -1;
+  let team = -1, counts = {};
   const shown = new Set(Array.from({ length: BASE_TEAMS }, (_, i) => i));
+  // 팀 쏠림 막기: 반에 6명 이상 들어오면, 가장 적은 팀보다 2명 이상 많은 팀은 잠깐 잠금
+  const total = () => Object.values(counts).reduce((a, b) => a + b, 0);
+  const minCount = () => Math.min(...[...shown].map(i => counts[i] || 0));
+  const isFull = i => total() >= 6 && (counts[i] || 0) >= minCount() + 2;
   const drawTeams = () => {
     const ids = [...shown].sort((x, y) => x - y), more = TEAMS.length - shown.size;
-    $('teams').innerHTML = ids.map(i => `<button type="button" class="teamb" role="radio" aria-checked="${i === team}" aria-label="${teamName(i)}" data-t="${i}" style="--tc:${TEAMS[i].col}">${shipIcon(TEAMS[i].col, 40)}<b>${TEAMS[i].nm}</b></button>`).join('')
+    $('teams').innerHTML = ids.map(i => { const n = counts[i] || 0, full = isFull(i) && i !== team;
+      return `<button type="button" class="teamb ${full ? 'full' : ''}" role="radio" aria-checked="${i === team}" aria-label="${teamName(i)} ${n}명${full ? ', 인원이 많아 잠김' : ''}" data-t="${i}" style="--tc:${TEAMS[i].col}" ${full ? 'disabled' : ''}>${shipIcon(TEAMS[i].col, 40)}<b>${TEAMS[i].nm}</b><span class="tcnt">${full ? '인원 많음' : n + '명'}</span></button>`; }).join('')
       + (more ? `<button type="button" class="teamb addt" id="addt" aria-expanded="${!$('palette').hidden}"><span class="plus">＋</span><b>팀 추가</b></button>` : '');
     $('teams').querySelectorAll('.teamb[data-t]').forEach(b => b.onclick = () => pickTeam(+b.dataset.t));
     if (more) $('addt').onclick = () => { const p = $('palette'); p.hidden = !p.hidden; drawPalette(); drawTeams(); if (!p.hidden) p.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); };
@@ -297,26 +310,43 @@ function showJoin() {
   };
   const pickTeam = i => { team = i; $('jerr').textContent = ''; drawTeams(); SQAudio.sfx('pick'); };
   drawTeams();
+  $('autot').onclick = () => { const ids = [...shown].filter(i => !isFull(i)), lo = Math.min(...ids.map(i => counts[i] || 0)), cand = ids.filter(i => (counts[i] || 0) === lo); pickTeam(cand[Math.floor(Math.random() * cand.length)]); toast(`${teamName(team)}으로 정했어요!`); };
   // 방 코드를 다 쓰면, 친구들이 이미 추가해 둔 팀도 자동으로 보여 줌
-  let lastCode = '';
+  // 방 코드를 다 쓰면 팀별 인원을 보여 주고(5초마다 새로 고침), 친구들이 이미 추가해 둔 팀도 자동으로 보여 줌
   const peekRoom = async () => {
-    const c = $('jcode').value.replace(/\D/g, ''); if (c.length !== 4 || c === lastCode) return; lastCode = c;
-    const used = await SQNet.roomTeams(c); let added = false;
-    used.forEach(i => { if (i >= 0 && i < TEAMS.length && !shown.has(i)) { shown.add(i); added = true; } });
-    if (added) { drawTeams(); if (!$('palette').hidden) drawPalette(); }
+    if (!$('teams')) { clearInterval(peekT); return; }
+    const c = $('jcode').value.replace(/\D/g, ''); if (c.length !== 4) { counts = {}; drawTeams(); return; }
+    counts = await SQNet.roomTeams(c); if (!$('teams')) return;
+    Object.keys(counts).map(Number).forEach(i => { if (i >= 0 && i < TEAMS.length) shown.add(i); });
+    drawTeams(); if (!$('palette').hidden) drawPalette();
   };
-  $('jcode').addEventListener('input', peekRoom); peekRoom();
+  const peekT = setInterval(peekRoom, 5000);
+  $('jcode').addEventListener('input', () => { const c = $('jcode').value.replace(/\D/g, ''); if (c.length === 4 || c.length === 3) peekRoom(); }); peekRoom();
   const go = async () => {
     const code = $('jcode').value.replace(/\D/g, ''), nick = $('jnick').value.trim();
     if (code.length !== 4) { $('jerr').textContent = '4자리 방 코드를 입력해 주세요.'; return; }
     if (!nick) { $('jerr').textContent = '닉네임을 입력해 주세요.'; return; }
-    if (team < 0) { $('jerr').textContent = '팀을 골라 주세요.'; return; }
+    if (team < 0) { $('jerr').textContent = '팀을 골라 주세요. 고르기 어려우면 🎲 자동 배정!'; return; }
     $('jgo').disabled = true; $('jerr').textContent = '';
-    try { const r = await SQNet.join(code, nick, team); if (!r || !r.id || !r.token) throw new Error('join'); const got = typeof r.team === 'number' ? r.team : team; S.net = { id:r.id, token:r.token, nickname:r.nickname, code, team: got }; startGame(); if (got !== team) toast(`서버가 아직 ${teamName(team)}을 지원하지 않아 ${teamName(got)}으로 탑승했어요. 선생님께 알려 주세요.`, 'bad'); }
+    try { const r = await SQNet.join(code, nick, team); if (!r || !r.id || !r.token) throw new Error('join'); const got = typeof r.team === 'number' ? r.team : team; S.net = { id:r.id, token:r.token, nickname:r.nickname, code, team: got };
+      if (r.resumed) { clearInterval(peekT); resumeFrom(r); return; }
+      clearInterval(peekT); startGame(); if (got !== team) toast(`서버가 아직 ${teamName(team)}을 지원하지 않아 ${teamName(got)}으로 탑승했어요. 선생님께 알려 주세요.`, 'bad'); }
     catch (e) { $('jerr').textContent = SQNet.errText(e); $('jgo').disabled = false; }
   };
   $('jgo').onclick = go; $('jnick').onkeydown = e => { if (e.key === 'Enter') go(); };
-  $('jsolo').onclick = () => { S.net = null; startGame(); };
+  $('jsolo').onclick = () => { clearInterval(peekT); S.net = null; startGame(); };
+}
+// 같은 방에 같은 이름으로 다시 들어오면 서버 기록에서 이어 하기 (학생 피드백: 다시 들어오면 기록이 두 개 생김)
+function resumeFrom(r) {
+  const net = S.net, done = Math.max(0, Math.min(r.mission || 0, MISSIONS.length));
+  S = fresh(); S.net = net; S.started = true; S.tut = 'done'; S.tut2 = 'done';
+  Object.assign(S, { done, stars: r.stars || 0, clusters: r.clusters || 0, nebulae: r.nebulae || 0, galaxies: r.galaxies || 0, hits: r.hits || 0, bonus: r.bonus || 0 });
+  S.res = Array.from({ length: done }, () => 0);
+  S.memDone = MEMS.filter(x => x.after < done).map(x => x.after); S.warpDone = WARPS.filter(w => w.after < done).map(w => w.after);
+  connectCrew();
+  if (r.finished || done >= MISSIONS.length) { S.mi = MISSIONS.length - 1; S.finished = true; S.phase = 'end'; save(); render(); showEnd(); toast(`${r.nickname} 탐정의 기록을 찾았어요! 이미 원정을 완료했어요.`); return; }
+  S.mi = done; S.en = M().energy; S.phase = 'intro'; save(); SQNet.aim(S.net, M().sector, null); render(); showIntro();
+  toast(`${r.nickname} 탐정의 기록을 찾았어요! 미션 ${M().code}부터 이어서 탐사해요.`);
 }
 function startGame() { S.started = true; S.phase = 'intro'; save(); connectCrew(); SQNet.aim(S.net, M().sector, null); render(); showIntro(); }
 
@@ -332,6 +362,18 @@ const PARALLAX_SVG = `<svg viewBox="0 0 520 190" role="img" aria-label="1월과 
   <circle cx="160" cy="150" r="6" fill="#4d8bff"/><text x="160" y="176" fill="#79d3e8" font-size="11" text-anchor="middle">1월 지구</text>
   <circle cx="360" cy="150" r="6" fill="#4d8bff"/><text x="360" y="176" fill="#ff7aa8" font-size="11" text-anchor="middle">7월 지구</text>
 </svg>`;
+// 학생 피드백 "절대 등급과 겉보기 등급 비교가 어렵다" → 같은 전구를 가까이·멀리 둔 그림 + 핵심 정리
+const MAG_CARD = `<div class="magcard"><div class="eyebrow" style="color:var(--amber)">잠깐! 개념 정리 · 겉보기 등급 vs 절대 등급</div>
+  <svg viewBox="0 0 520 150" role="img" aria-label="같은 전구라도 가까이 있으면 밝게, 멀리 있으면 어둡게 보인다" style="width:100%;height:auto">
+    <defs><radialGradient id="glw"><stop offset="0" stop-color="#fff3c4"/><stop offset=".35" stop-color="#f3c35a" stop-opacity=".55"/><stop offset="1" stop-color="#f3c35a" stop-opacity="0"/></radialGradient></defs>
+    <rect width="520" height="150" rx="10" fill="#050a17"/>
+    <circle cx="40" cy="70" r="13" fill="#4d8bff"/><text x="40" y="104" font-size="12" fill="#8d9bbb" text-anchor="middle">나(지구)</text>
+    <circle cx="140" cy="70" r="46" fill="url(#glw)"/><circle cx="140" cy="70" r="11" fill="#fff8e0"/><text x="140" y="134" font-size="13" fill="#f3c35a" text-anchor="middle">가까운 전구 → 밝게 보임</text>
+    <line x1="58" y1="70" x2="120" y2="70" stroke="#26375c" stroke-dasharray="4 4"/><line x1="160" y1="70" x2="430" y2="70" stroke="#26375c" stroke-dasharray="4 4"/>
+    <circle cx="450" cy="70" r="16" fill="url(#glw)"/><circle cx="450" cy="70" r="4" fill="#fff8e0"/><text x="450" y="134" font-size="13" fill="#8d9bbb" text-anchor="middle">멀리 있는 같은 전구 → 어둡게 보임</text>
+    <text x="300" y="30" font-size="13" fill="#c9d2e6" text-anchor="middle">전구의 진짜 밝기는 같아요!</text>
+  </svg>
+  <div class="magdef"><div><b>겉보기 등급</b><span>지구에서 <u>보이는</u> 밝기 · 거리에 따라 달라져요</span></div><div><b>절대 등급</b><span>모든 별을 <u>10 pc</u>에 놓았을 때 밝기 · 별의 <u>진짜</u> 밝기</span></div><div><b>숫자가 작을수록</b><span>더 밝아요! −1등급 &gt; 0등급 &gt; 1등급 &gt; 2등급 …</span></div></div></div>`;
 function showIntro() {
   SQAudio.setMode(0);
   const m = M(), sec = SEC(), first = MISSIONS.findIndex(x => x.sector === m.sector) === S.mi;
@@ -339,10 +381,10 @@ function showIntro() {
     <h2>${first ? esc(sec.nm) + ' 도착' : esc(m.title)}</h2>
     ${first ? `<p class="muted">${esc(sec.story)}</p><div class="eyebrow" style="color:var(--amber)">MISSION ${m.code} · ${esc(m.title)}</div>` : ''}
     <div class="chief">${avatar}<div><div class="who">관측소장</div><p>${esc(m.intro)}</p></div></div>
-    ${m.diagram === 'parallax' ? PARALLAX_SVG : ''}
+    ${m.diagram === 'parallax' ? PARALLAX_SVG : ''}${m.title === '눈속임의 범인' ? MAG_CARD : ''}
     <p class="target">찾아야 할 천체: <b>${esc(m.goal)}</b><br><span style="font-size:13px;color:var(--muted)">관측 에너지 ${m.energy}${m.collect ? ' · 틀리면 3초 동안 망원경이 흔들려요 (별점에도 반영)' : ' · 장비: ' + toolsFor().map(t => TOOLS[t].name).join(', ')}${m.reward ? ` · 성공하면 ${m.reward} 획득` : ''}</span></p>
     <button class="go" id="start">관측 시작</button>`);
-  $('start').onclick = () => { SQAudio.setMode(1); S.phase = 'play'; save(); close(); render(); banner(`MISSION ${m.code}`, m.title); SQAudio.sfx('warp'); const hd = $('hud'); hd.classList.remove('pop'); void hd.offsetWidth; hd.classList.add('pop'); $('sky').focus({ preventScroll: true }); };
+  $('start').onclick = () => { SQAudio.setMode(1); S.phase = 'play'; save(); close(); render(); banner(`MISSION ${m.code}`, m.title); SQAudio.sfx('warp'); const hd = $('hud'); hd.classList.remove('pop'); void hd.offsetWidth; hd.classList.add('pop'); $('sky').focus({ preventScroll: true }); maybeTut(); };
 }
 
 function showQuiz() {
@@ -386,14 +428,32 @@ function showQuiz() {
   });
 }
 function shuffled(a, seed) { const r = rngOf(seed + 11); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+// 학생 피드백 "틀리면 다시 기회를" → 해설을 본 뒤 같은 미션의 다른 난이도 문제로 한 번 재도전 (점수 절반)
+const RETRY_LVL = { '상': '중', '중': '하', '하': '중' };
+function quizBlock(z, lvl, a, tag) {
+  return `<div class="explain"><b>${tag} · ${lvl}</b><br>${esc(z.q)}</div>
+    <div class="opts">${z.opts.map((t, i) => `<button class="opt ${i === z.a ? 'right' : i === a.pick ? 'wrong' : ''}" disabled>${esc(t)}</button>`).join('')}</div>
+    <div class="msg ${a.ok ? '' : 'bad'}" style="${a.ok ? 'color:var(--good)' : ''}">${a.ok ? `정답! +${a.pts}P` : '아쉽게 틀렸어요.'}</div>
+    <div class="explain">${esc(z.ex)}</div>`;
+}
+function retryQuiz(head, m, ans) {
+  const lvl = RETRY_LVL[ans.lvl], z = m.q3[lvl], half = Math.round(QPTS[lvl] / 2), order = shuffled(z.opts.map((_, i) => i), S.mi * 13 + lvl.charCodeAt(0));
+  open(`${head}<div class="explain"><b>🔁 재도전 · ${lvl}</b> (+${half}P · 점수 절반 · 마지막 기회)<br>${esc(z.q)}</div>
+    <div class="opts">${order.map(i => `<button class="opt" data-i="${i}">${esc(z.opts[i])}</button>`).join('')}</div>`);
+  card.querySelectorAll('.opt').forEach(b => b.onclick = () => {
+    const ok = +b.dataset.i === z.a, pts = ok ? addPoints(half, null) : 0;
+    ans.retry = { lvl, ok, pick: +b.dataset.i, pts }; save(); render();
+    SQAudio.sfx(ok ? 'ok' : 'wrong'); if (ok) bump('m-pts', 'bump'); sync();
+    quizResult(head, m, ans);
+  });
+}
 function quizResult(head, m, ans) {
-  const z = m.q3[ans.lvl];
-  open(`${head}<div class="explain"><b>증명 질문 · ${ans.lvl}</b><br>${esc(z.q)}</div>
-    <div class="opts">${z.opts.map((t, i) => `<button class="opt ${i === z.a ? 'right' : i === ans.pick ? 'wrong' : ''}" disabled>${esc(t)}</button>`).join('')}</div>
-    <div class="msg ${ans.ok ? '' : 'bad'}" style="${ans.ok ? 'color:var(--good)' : ''}">${ans.ok ? `정답! +${ans.pts}P` : '아쉽게 틀렸어요. 보너스 점수는 없지만 미션 점수는 그대로예요.'}</div>
-    <div class="explain">${esc(z.ex)}</div>
+  const z = m.q3[ans.lvl], R = ans.retry;
+  open(`${head}${quizBlock(z, ans.lvl, ans, '증명 질문')}
+    ${R ? quizBlock(m.q3[R.lvl], R.lvl, R, '🔁 재도전') : !ans.ok ? `<div class="explain">해설을 읽었나요? <b>다른 문제로 한 번 더</b> 도전할 수 있어요 (점수 절반).</div><button class="ghost" id="retry">🔁 재도전하기 (+${Math.round(QPTS[RETRY_LVL[ans.lvl]] / 2)}P)</button>` : ''}
     <button class="go" id="next">${S.finished ? '원정 보고서 보기' : MEMS.some(x => x.after === S.mi) ? '보안 잠금 해제하기' : WARPS.some(w => w.after === S.mi) ? '워프 준비!' : '다음 미션으로'}</button>`);
   $('next').onclick = next; $('next').focus();
+  if ($('retry')) $('retry').onclick = () => retryQuiz(head, m, ans);
 }
 
 function next() {
@@ -405,6 +465,7 @@ function next() {
   advance();
 }
 function advance() {
+  endTut(false);
   const prev = M().sector;
   S.mi++; S.en = M().energy; S.wrong = 0; S.sel = null; S.msg = null; S.phase = 'intro'; save(); SQNet.aim(S.net, M().sector, null); render();
   if (M().sector !== prev) { banner(`SECTOR ${M().sector + 1} · ${SEC().en}`, SEC().nm + ' 진입'); SQAudio.sfx('warp'); setTimeout(showIntro, 1700); }
@@ -859,7 +920,7 @@ $('exit').onclick = () => {
     <p class="muted">${S.net ? '현황판에 남은 점수는 그대로 남아요. 다시 들어오면 새 탐사선으로 시작해요.' : '혼자 탐사한 기록이 지워져요.'}</p>
     <div class="row"><button class="go" id="exitYes">처음 화면으로</button><button class="ghost" id="exitNo">계속 탐사하기</button></div>`);
   $('exitNo').onclick = close2;
-  $('exitYes').onclick = () => { if (crewSub) { crewSub.stop(); crewSub = null; } crewPlayers = []; feedEv = []; seenEv = null; S = fresh(); save(); close2(); close(); render(); connectCrew(); showJoin(); };
+  $('exitYes').onclick = () => { endTut(false); if (crewSub) { crewSub.stop(); crewSub = null; } crewPlayers = []; feedEv = []; seenEv = null; S = fresh(); save(); close2(); close(); render(); connectCrew(); showJoin(); };
 };
 
 // ---------- 소리 ----------
@@ -869,7 +930,90 @@ $('snd').onclick = () => { if (SQAudio.playing) { SQAudio.stop(); musicWanted = 
 document.addEventListener('pointerdown', function first() { SQAudio.unlock(); if (musicWanted && !SQAudio.playing) { SQAudio.start(); paintSound(); } document.removeEventListener('pointerdown', first); });
 paintSound();
 
-window.SQGame = { openShip, onDuel: d => onDuel(d), spawnEventStar };
+// ---------- 튜토리얼 (따라 하기 · 언제든 건너뛰기) ----------
+// 학생 피드백: "처음에 어떻게 하는지 모르겠다", "내 위치가 어디인지 모르겠다" → 첫 미션에서 한 단계씩 직접 해 보며 익힘
+const TUT_BASIC = [
+  { sel: '#sky', t: '① 하늘 확대하고 움직이기', x: '마우스 <b>휠을 굴리거나</b> 두 손가락을 <b>벌려서 확대</b>해 보세요. 확대한 뒤에는 하늘을 <b>끌어서</b> 움직일 수 있어요.', act: '확대해 보세요 👆', done: c => Sky.view().moved },
+  { sel: '.zoombar', t: '② 확대 · 축소 버튼', x: '<b>＋ −</b> 버튼으로도 확대할 수 있어요. <b>⟲</b>를 누르면 처음 화면으로 돌아와요.' },
+  { sel: '#findme', t: '③ 내 우주선 찾기 📍', x: '내가 어디 있는지 모르겠으면 이 버튼! 화면이 <b>내 우주선</b>으로 날아가요. 지금 눌러 보세요.', act: '📍를 눌러 보세요', done: c => c.findme },
+  { sel: '#mini', t: '④ 전체 지도 🗺', x: '하늘 전체를 작게 보여 줘요. <b>네모 칸</b> = 지금 보고 있는 곳, <b>빛나는 점</b> = 나, <b>작은 점</b> = 친구들. 지도를 누르면 그곳으로 이동해요.' },
+  { sel: '#hud', t: '⑤ 미션 창', x: '여기에 <b>찾아야 할 것</b>과 <b>방법</b>이 적혀 있어요. 막히면 오른쪽 패널의 <b>관측소장의 힌트</b>를 눌러요.' },
+  { sel: '#sky', t: '⑥ 별 모으기', x: '이제 <b>파랗게 빛나는 별</b>을 하나 눌러 보세요! 맞으면 <b style="color:var(--good)">초록 동그라미</b>가 생겨요. 잘 안 보이면 확대!', act: '파란 별을 눌러 보세요', done: c => (S.col[S.mi] || []).length >= 1 },
+  { sel: '.hudbar', t: '⑦ 점수와 에너지', x: '<b>점수(P)</b>가 오를수록 티어가 올라가요. <b>⚡ 번개</b>는 관측 에너지로, 10초마다 1씩 저절로 차요.' },
+  { sel: '#crew', t: '⑧ 친구와 배틀', x: '하늘의 <b>친구 우주선을 누르면</b> 별 뺏기 공격·스피드 대결! <b>같은 팀</b>은 에너지를 보내 도와요. 여기서 <b>팀 순위</b>를 확인해요.', scroll: true },
+];
+const TUT_MEASURE = [
+  { sel: '#sky', t: '① 망원경 맞추기', x: '이번 미션은 <b>이름이 있는 별</b>을 눌러 망원경을 맞추는 거예요. 아무 이름 있는 별이나 눌러 보세요.', act: '이름 있는 별을 눌러 보세요', done: c => !!S.sel },
+  { sel: '.tools', t: '② 관측 장비로 측정', x: '장비 버튼을 누르면 측정돼요. <b>⚡ 개수만큼</b> 에너지를 써요. <b style="color:var(--amber)">추천</b> 표시가 있는 장비부터!', act: '장비 하나를 눌러 보세요', done: c => Object.values(S.obs).some(o => Object.keys(o).length) },
+  { sel: '.readouts', t: '③ 측정 결과 읽기', x: '결과가 그림으로 크게 나오고, 아래 <b>탐사 수첩</b>에도 쌓여요. 여러 별을 재서 <b>비교</b>해 보세요.' },
+  { sel: '#accuse', t: '④ 지목하기', x: '증거가 모이면 <b>지목하기</b>! 틀리면 <b>8초 동안</b> 다시 못 누르고 별점이 깎여요. <b>찍지 말고 증거로!</b>' },
+];
+let tut = null;
+function startTut(steps, key) {
+  endTut(false);
+  const box = document.createElement('div'); box.id = 'coach';
+  box.innerHTML = '<div class="hole"></div><div class="bubble" role="dialog" aria-live="polite"><div class="tstep"></div><b class="tt"></b><p class="tx"></p><div class="tact"></div><div class="row"><button class="ghost" id="tutskip">튜토리얼 건너뛰기</button><button class="go" id="tutnext">다음 →</button></div></div>';
+  document.body.appendChild(box);
+  tut = { steps, key, i: -1, box, flags: {}, timer: null };
+  $('tutskip').onclick = () => endTut(true);
+  $('tutnext').onclick = () => tutGo(tut.i + 1);
+  tut.timer = setInterval(tutTick, 250);
+  tutGo(0);
+}
+function tutGo(i) {
+  if (!tut) return;
+  if (i >= tut.steps.length) { endTut(false, true); return; }
+  tut.i = i; tut.flags = {}; tut.t0 = Date.now();
+  const st = tut.steps[i], el = document.querySelector(st.sel);
+  if (st.scroll && el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  else if (i && tut.steps[i - 1].scroll) window.scrollTo({ top: 0, behavior: 'smooth' });
+  if (st.done) Sky.markView();
+  tut.box.querySelector('.tstep').textContent = `튜토리얼 ${i + 1} / ${tut.steps.length}`;
+  tut.box.querySelector('.tt').textContent = st.t;
+  tut.box.querySelector('.tx').innerHTML = st.x;
+  tut.box.querySelector('.tact').innerHTML = st.act ? `<span class="pulse">${st.act}</span>` : '';
+  $('tutnext').textContent = i === tut.steps.length - 1 ? '시작하기 🚀' : st.done ? '건너뛰고 다음 →' : '다음 →';
+  $('tutnext').classList.toggle('ghost', !!st.done); $('tutnext').classList.toggle('go', !st.done);
+  tutTick();
+}
+function tutTick() {
+  if (!tut) return;
+  const st = tut.steps[tut.i], el = document.querySelector(st.sel), hole = tut.box.querySelector('.hole'), bub = tut.box.querySelector('.bubble');
+  const hideNow = !ov.hidden || !ov2.hidden || !el || S.phase !== 'play';
+  tut.box.style.display = hideNow ? 'none' : '';
+  if (hideNow) return;
+  const r = el.getBoundingClientRect(), pad = 6;
+  Object.assign(hole.style, { left: r.left - pad + 'px', top: r.top - pad + 'px', width: r.width + pad * 2 + 'px', height: r.height + pad * 2 + 'px' });
+  const vw = innerWidth, vh = innerHeight, bw = Math.min(360, vw - 24);
+  bub.style.width = bw + 'px';
+  const bh = bub.offsetHeight || 160;
+  let top = r.bottom + 14, left = Math.min(Math.max(12, r.left), vw - bw - 12);
+  if (top + bh > vh - 8) top = r.top - bh - 14;
+  if (top < 8) { top = Math.max(8, vh - bh - 12); left = Math.min(Math.max(12, r.right - bw), vw - bw - 12); }
+  if (r.height > vh * 0.55 || vw < 700) { top = vh - bh - 12; left = (vw - bw) / 2; }
+  Object.assign(bub.style, { top: top + 'px', left: left + 'px' });
+  if (st.done && Date.now() - tut.t0 > 400 && st.done(tut.flags)) { SQAudio.sfx('measure'); tutGo(tut.i + 1); }
+}
+function endTut(skipped, finished) {
+  if (!tut) return;
+  clearInterval(tut.timer); tut.box.remove();
+  const key = tut.key; tut = null;
+  if (key) { S[key] = skipped ? 'skip' : 'done'; save(); }
+  if (finished) toast(key === 'tut' ? '튜토리얼 끝! 남은 파란 별도 모아 보세요 🚀' : '이제 증거를 모아 범인을 찾아라! 🔍');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function maybeTut() {
+  const m = M();
+  if (S.mi === 0 && !S.tut) setTimeout(() => { if (S.phase === 'play' && S.mi === 0) startTut(TUT_BASIC, 'tut'); }, 2300);
+  else if (m.target && m.sector === 0 && !S.tut2) setTimeout(() => { if (S.phase === 'play' && M().target) startTut(TUT_MEASURE, 'tut2'); }, 2300);
+}
+$('help').onclick = () => { if (S.phase !== 'play') { toast('관측 중일 때 튜토리얼을 볼 수 있어요.'); return; } startTut(M().target ? TUT_MEASURE : TUT_BASIC, null); };
+$('findme').onclick = () => { Sky.focusMe(); if (tut) tut.flags.findme = true; SQAudio.sfx('pick'); };
+$('mapbtn').onclick = () => { const mm = $('mini'); mm.hidden = !mm.hidden; $('mapbtn').setAttribute('aria-pressed', String(!mm.hidden)); try { localStorage.setItem('sq-mini', mm.hidden ? '0' : '1'); } catch (e) {} };
+try { if (localStorage.getItem('sq-mini') === '0') { $('mini').hidden = true; $('mapbtn').setAttribute('aria-pressed', 'false'); } } catch (e) {}
+Sky.attachMinimap($('mini'));
+
+window.SQGame = { openShip, onDuel: d => onDuel(d), spawnEventStar, startTut: () => startTut(TUT_BASIC, null), endTut: () => endTut(true) };
 renderItems(); scheduleEventStar(true);
 // ---------- boot ----------
 if (S.phase === 'play') SQAudio.setMode(1);

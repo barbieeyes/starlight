@@ -26,6 +26,7 @@
       </div>
     </div>
     <div class="sys">
+      <button class="iconb" id="help" title="튜토리얼 다시 보기" aria-label="튜토리얼 다시 보기"><span class="ic">?</span><span class="tx">도움말</span></button>
       <button class="iconb sound" id="snd" aria-pressed="false" title="배경음악"><span class="ic">♪</span><span class="tx" id="sndtx">음악 OFF</span></button>
       <button class="iconb exitb" id="exit" title="처음 화면으로" aria-label="나가기"><span class="ic">⏏</span><span class="tx">나가기</span></button>
     </div>
@@ -40,7 +41,10 @@
       <div class="banner" id="banner" aria-hidden="true"><i class="lb t"></i><i class="lb b"></i><div class="bt"><small id="bsub"></small><b id="btitle"></b></div></div>
       <div class="farcrew" id="farcrew" hidden></div>
       <div class="items" id="items" aria-label="아이템 가방"></div>
+      <canvas class="minimap" id="mini" aria-label="전체 지도. 누르면 그곳으로 이동"></canvas>
       <div class="zoombar">
+        <button id="findme" class="findme" aria-label="내 우주선 찾기" title="내 우주선 찾기">📍</button>
+        <button id="mapbtn" aria-label="전체 지도 켜기·끄기" aria-pressed="true" title="전체 지도">🗺</button>
         <span class="zl" id="zl">×1.0</span>
         <button id="zout" aria-label="축소">−</button>
         <button id="zin" aria-label="확대">+</button>

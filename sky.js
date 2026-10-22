@@ -7,7 +7,7 @@ let cv, ctx, dpr = 1, cw = 0, ch = 0;
 let cam = { x: W / 2, y: H / 2, z: 1 }, camT = null;
 let sector = 0, objs = [], bg = [], members = [], sprites = {}, band = null;
 let selected = null, collected = new Set(), observed = new Set(), hover = null, onPick = () => {}, onZoom = () => {};
-let hyper = 0; const hyperDur = 1.3;
+let hyper = 0, viewMark = null; const hyperDur = 1.3;
 const evs = new Map(), floats = [], radarMarks = { ids: [], until: 0 };
 const ships = new Map(); // 탐사단 우주선: id -> { nick, me, aim, x, y, ang, ph, col }
 const SHIPCOL = ['121,211,232', '255,122,168', '185,162,255', '111,220,155', '255,176,98', '160,200,255'];
@@ -317,7 +317,11 @@ function drawShips(t, dt) {
     ctx.fillStyle = '#e8eef9'; ctx.beginPath(); ctx.moveTo(s, 0); ctx.lineTo(-s * 0.7, -s * 0.62); ctx.lineTo(-s * 0.35, 0); ctx.lineTo(-s * 0.7, s * 0.62); ctx.closePath(); ctx.fill();
     ctx.fillStyle = `rgb(${col})`; ctx.beginPath(); ctx.arc(s * 0.15, 0, s * 0.22, 0, 6.2832); ctx.fill();
     ctx.restore();
-    if (sh.me) { ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, s + 4, 0, 6.2832); ctx.stroke(); }
+    if (sh.me) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1.8; ctx.beginPath(); ctx.arc(x, y, s + 4, 0, 6.2832); ctx.stroke();
+      const pu = reduce ? 0 : (Math.sin(t * 3) + 1) / 2; ctx.strokeStyle = `rgba(${col},${0.35 + 0.4 * pu})`; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(x, y, s + 9 + pu * 4, 0, 6.2832); ctx.stroke();
+      if (sh.ping) { const a = (performance.now() - sh.ping) / 1000; if (a > 2.4) sh.ping = 0; else for (let k = 0; k < 3; k++) { const q = (a * 1.2 + k / 3) % 1; ctx.strokeStyle = `rgba(243,195,90,${(1 - q) * 0.9})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, s + 10 + q * 70, 0, 6.2832); ctx.stroke(); } }
+    }
     if (sh.shield) { ctx.strokeStyle = 'rgba(121,211,232,0.7)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, s + 6, 0, 6.2832); ctx.stroke(); }
     if (hover === 'ship:' + sh.key) { ctx.strokeStyle = 'rgba(243,195,90,0.9)'; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.arc(x, y, s + 9, 0, 6.2832); ctx.stroke(); ctx.setLineDash([]); }
     sh.lx = x; sh.ly = y - s - 3; sh.ls = s;
@@ -336,6 +340,36 @@ function drawShips(t, dt) {
       ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(5,10,23,0.8)'; ctx.strokeText(label, x, y); ctx.fillStyle = sh.me ? '#ffffff' : `rgba(${col},0.95)`; ctx.fillText(label, x, y);
     }
   });
+}
+
+// ---------- 전체 지도 (미니맵): 하늘 전체 · 지금 보는 곳(네모) · 나와 친구들 위치 ----------
+let mini = null, miniG = null, miniN = 0, miniBg = null, miniKey = '';
+function drawMini(t) {
+  if (!mini || mini.hidden || ++miniN % 8) return;
+  const w = mini.clientWidth, h = mini.clientHeight; if (!w || !h) return;
+  const d = Math.min(2, window.devicePixelRatio || 1); if (mini.width !== Math.round(w * d)) { mini.width = Math.round(w * d); mini.height = Math.round(h * d); }
+  const g = miniG, k = w / W, ky = h / H;
+  // 움직이지 않는 천체 층은 구역·크기·선택·수집이 바뀔 때만 다시 그림
+  const key = [sector, w, h, d, selected, collected.size].join('|');
+  if (key !== miniKey) {
+    miniKey = key; miniBg = miniBg || document.createElement('canvas'); miniBg.width = mini.width; miniBg.height = mini.height;
+    const b = miniBg.getContext('2d'); b.setTransform(d, 0, 0, d, 0, 0);
+    b.fillStyle = sector === 3 ? '#03040c' : '#060b1a'; b.fillRect(0, 0, w, h);
+    objs.forEach(o => { const ox = o.x, oy = o.y;
+      if (o.kind === 'field') { if (collected.has(o.id)) { b.fillStyle = 'rgba(111,220,155,.9)'; b.fillRect(ox * k - 1, oy * ky - 1, 2.5, 2.5); } return; }
+      const col = o.kind === 'star' ? (o.col || (o.col = kelvin(o.T))) : null;
+      b.fillStyle = col ? `rgb(${col.join(',')})` : 'rgba(185,170,255,.75)'; b.beginPath(); b.arc(ox * k, oy * ky, o.kind === 'star' ? 1.8 : Math.max(2.5, o.size * k * 0.35), 0, 6.2832); b.fill();
+      if (selected === o.id) { b.strokeStyle = '#79d3e8'; b.lineWidth = 1.5; b.beginPath(); b.arc(ox * k, oy * ky, 5, 0, 6.2832); b.stroke(); } });
+  }
+  g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(miniBg, 0, 0); g.setTransform(d, 0, 0, d, 0, 0);
+  // 지금 보고 있는 곳
+  const [ax, ay] = toWorld(0, 0), [bx, by] = toWorld(cw, ch);
+  g.strokeStyle = 'rgba(243,195,90,.95)'; g.lineWidth = 1.5; g.strokeRect(Math.max(0, ax * k), Math.max(0, ay * ky), Math.min(w, (bx - ax) * k), Math.min(h, (by - ay) * ky));
+  ships.forEach(sh => { if (sh.x == null) return; const x = sh.x * k, y = sh.y * ky;
+    if (sh.me) { const p = reduce ? 0.5 : (Math.sin(t * 4) + 1) / 2; g.fillStyle = `rgba(${sh.col},${0.25 + 0.35 * p})`; g.beginPath(); g.arc(x, y, 6 + p * 3, 0, 6.2832); g.fill(); g.fillStyle = '#fff'; g.beginPath(); g.arc(x, y, 3.4, 0, 6.2832); g.fill(); g.strokeStyle = `rgb(${sh.col})`; g.lineWidth = 1.5; g.stroke(); }
+    else { g.fillStyle = `rgba(${sh.col},.9)`; g.beginPath(); g.arc(x, y, 1.9, 0, 6.2832); g.fill(); } });
+  const me = [...ships.values()].find(s => s.me);
+  if (me && me.x != null) { g.font = '700 10px "IBM Plex Sans KR", "Malgun Gothic", sans-serif'; g.fillStyle = '#fff'; g.textAlign = 'center'; g.fillText('나', Math.min(w - 8, Math.max(8, me.x * k)), Math.max(10, me.y * ky - 8)); }
 }
 
 // ---------- 움직이지 않는 층: 시점이 바뀔 때만 다시 그림 ----------
@@ -434,6 +468,7 @@ function frame(now) {
   if (hyper) drawHyper(now);
   drawShips(t, dt);
   drawFloats(dt);
+  drawMini(t);
 }
 
 function focusObj(id) { const o = objs.find(v => v.id === id); if (!o) return; const z = Math.max(cam.z, o.kind === 'star' || o.kind === 'field' ? 2.2 : 2.6); camT = clampCam({ x: o.x, y: o.y, z: Math.min(6, z) }); }
@@ -504,6 +539,11 @@ return {
   init(canvas, opts) { cv = canvas; cv.style.cursor = C_PLANET; ctx = cv.getContext('2d'); onPick = opts.onPick; onZoom = opts.onZoom || onZoom; bind(); resize(); requestAnimationFrame(frame); },
   setSector(sec) { sector = sec; objs = SQ.SECTORS[sec].objs; genBackground(sec); genMembers(sec); genSprites(sec); cam = clampCam({ x: W / 2, y: H / 2, z: 1 }); camT = null; selected = null; ships.forEach(sh => { sh.x = null; }); evs.clear(); layerA.key = layerB.key = ''; onZoom(1); },
   setSelected(id) { selected = id; },
+  attachMinimap(c) { mini = c; miniG = c.getContext('2d');
+    c.addEventListener('pointerdown', e => { const r = c.getBoundingClientRect(); camT = clampCam({ x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H, z: Math.max(cam.z, 1.6) }); e.preventDefault(); }); },
+  focusMe() { const me = [...ships.values()].find(s => s.me); if (!me || me.x == null) return false; camT = clampCam({ x: me.x, y: me.y, z: Math.max(cam.z, 2.2) }); me.ping = performance.now(); return true; },
+  markView() { viewMark = { ...cam }; },
+  view() { const m = viewMark || cam; return { x: cam.x, y: cam.y, z: cam.z, moved: Math.hypot(cam.x - m.x, cam.y - m.y) > 25 || Math.abs(cam.z - m.z) > 0.15 }; },
   setObserved(set) { observed = set; },
   setFieldBright(v) { fieldBright = !!v; },
   hyperspace() { if (!reduce) { hyper = performance.now(); hyperStreaks = []; } },

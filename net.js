@@ -79,10 +79,15 @@ return {
   available: () => !!sb,
   errText,
   createRoom: title => rpc('sq_create_room', { p_title: title }),
-  join: (code, nick, team) => rpc('sq_join2', { p_code: code, p_nick: nick, p_team: team }),
+  // 같은 방·같은 이름이면 기록을 이어 받음 (서버 패치 전이면 예전 방식으로 새로 입장)
+  join: async (code, nick, team) => { try { return await rpc('sq_join3', { p_code: code, p_nick: nick, p_team: team }); } catch (e) { if (/sq_join3|schema cache|Could not find/.test((e && e.message) || '')) return rpc('sq_join2', { p_code: code, p_nick: nick, p_team: team }); throw e; } },
+  claimAdmin: (code, pass) => rpc('sq_claim_admin', { p_code: code, p_pass: pass }),
+  renameRoom: (code, admin, title) => rpc('sq_rename_room', { p_code: code, p_admin: admin, p_title: title }),
+  players: async code => { const s = await rpc('sq_state', { p_code: code, p_since: 2147483647, p_me: null }); return (s && s.players) || []; },
   gift: (net, target) => rpc('sq_gift', { p_id: net.id, p_token: net.token, p_target: target }),
   // 이 방에서 이미 쓰고 있는 팀 번호들 (입장 화면에서 친구가 추가한 팀을 보여 주려고)
-  roomTeams: async code => { if (!sb) return []; try { const s = await rpc('sq_state', { p_code: code, p_since: 2147483647, p_me: null }); return [...new Set((s && s.players || []).map(p => p.team || 0))]; } catch (e) { return []; } },
+  // 이 방의 팀별 인원 { 팀번호: 명 } (입장 화면에서 팀 쏠림을 막고, 친구가 추가한 팀을 보여 주려고)
+  roomTeams: async code => { if (!sb) return {}; try { const s = await rpc('sq_state', { p_code: code, p_since: 2147483647, p_me: null }); const c = {}; (s && s.players || []).forEach(p => { c[p.team || 0] = (c[p.team || 0] || 0) + 1; }); return c; } catch (e) { return {}; } },
   roomTitle: async code => { if (!sb) return null; try { const { data } = await sb.from('sq_rooms').select('title').eq('code', code).maybeSingle(); return data ? data.title : null; } catch (e) { return null; } },
   progress(net, s, kind, body) {
     if (!net || !sb) return;

@@ -396,3 +396,37 @@ table { font-size: 14.5px; }
 .teamrank .tn { display: flex; align-items: center; gap: 5px; }
 .rank .nm .ship { display: inline-block; vertical-align: -3px; margin-right: 3px; }
 .ov2 .eyebrow .ship, .card .eyebrow .ship { display: inline-block; vertical-align: -4px; }
+
+/* ===== 10/22 학생 피드백 반영 ===== */
+/* 전체 지도 · 내 우주선 찾기 */
+.skybox canvas.minimap { position: absolute; right: 10px; bottom: 54px; width: 176px; height: 106px; border: 1px solid rgba(243,195,90,.55); border-radius: 8px; background: #060b1a; box-shadow: 0 6px 20px rgba(0,0,0,.5); cursor: pointer; touch-action: none; z-index: 2; }
+@media (max-width: 640px) { .skybox canvas.minimap { width: 128px; height: 77px; bottom: 52px; } }
+.zoombar button.findme { background: rgba(243,195,90,.18); border-color: rgba(243,195,90,.7); }
+.zoombar button[aria-pressed="false"] { opacity: .55; }
+/* 팀 인원 · 자동 배정 */
+.teamb .tcnt { font-size: 11.5px; color: var(--muted); font-family: var(--f-mono); }
+.teamb.full { opacity: .4; cursor: not-allowed; }
+.teamb.full .tcnt { color: var(--bad); font-family: var(--f-body); }
+#tlbl .linkbtn { margin-left: 6px; font-size: 13px; }
+/* 튜토리얼 */
+#coach { position: fixed; inset: 0; z-index: 60; pointer-events: none; }
+#coach .hole { position: fixed; border: 3px solid var(--amber); border-radius: 12px; box-shadow: 0 0 0 9999px rgba(2,5,12,.55), 0 0 24px rgba(243,195,90,.7); transition: all .3s cubic-bezier(.2,.8,.2,1); }
+#coach .bubble { position: fixed; pointer-events: auto; background: var(--panel); border: 1px solid var(--amber); border-radius: 14px; padding: 14px 16px; display: grid; gap: 6px; box-shadow: 0 16px 50px rgba(0,0,0,.6); transition: top .3s, left .3s; }
+#coach .tstep { font-family: var(--f-mono); font-size: 11px; letter-spacing: 1.5px; color: var(--cyan); }
+#coach .tt { font-family: var(--f-display); font-weight: 400; font-size: 21px; color: var(--amber); }
+#coach .tx { margin: 0; font-size: 15px; line-height: 1.6; }
+#coach .tx b { color: var(--text); }
+#coach .tact:empty { display: none; }
+#coach .pulse { display: inline-block; font-size: 14px; font-weight: 700; color: #1b1404; background: var(--amber); padding: 3px 12px; border-radius: 999px; animation: tpulse 1.2s ease-in-out infinite; }
+@keyframes tpulse { 50% { box-shadow: 0 0 0 6px rgba(243,195,90,.25); } }
+#coach .row { justify-content: space-between; margin-top: 4px; }
+#coach .row .ghost { font-size: 13px; padding: 8px 12px; }
+@media (prefers-reduced-motion: reduce) { #coach .pulse { animation: none; } #coach .hole, #coach .bubble { transition: none; } }
+/* 등급 개념 카드 */
+.magcard { background: var(--panel-2); border: 1px solid rgba(243,195,90,.45); border-radius: 10px; padding: 10px 12px; display: grid; gap: 8px; }
+.magdef { display: grid; gap: 6px; font-size: 14px; }
+.magdef div { display: grid; grid-template-columns: 110px 1fr; gap: 8px; align-items: baseline; }
+.magdef b { color: var(--amber); }
+.magdef u { text-decoration-color: var(--cyan); text-underline-offset: 3px; }
+@media (max-width: 480px) { .magdef div { grid-template-columns: 1fr; gap: 0; } }
+.magdef span { min-width: 0; }
